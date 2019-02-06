@@ -28,15 +28,9 @@
  *  @return NFW halo correlation function.
  */
 double xi_nfw_at_R(double R, double Mass, double conc, int delta, double om){
-  double*Rarr = (double*)malloc(sizeof(double));
-  double*xi  = (double*)malloc(sizeof(double));
-  double result;
-  Rarr[0] = R;
-  calc_xi_nfw(Rarr, 1, Mass, conc, delta, om, xi);
-  result = xi[0];
-  free(Rarr);
-  free(xi);
-  return result;
+  double xi = 0.0;
+  calc_xi_nfw(&R, 1, Mass, conc, delta, om, &xi);
+  return xi;
 }
 
 int calc_xi_nfw(double*R, int NR, double Mass, double conc, int delta, double om, double*xi_nfw){
@@ -68,15 +62,9 @@ double rhos_einasto_at_M(double Mass, double conc, double alpha, int delta, doub
 }
 
 double xi_einasto_at_R(double R, double Mass, double rhos, double conc, double alpha, int delta, double om){
-  double*Rarr = malloc(sizeof(double));
-  double*xi  = malloc(sizeof(double));
-  double result;
-  Rarr[0] = R;
-  calc_xi_einasto(Rarr, 1, Mass, rhos, conc, alpha, delta, om, xi);
-  result = xi[0];
-  free(Rarr);
-  free(xi);
-  return result;
+  double xi = 0.0;
+  calc_xi_einasto(&R, 1, Mass, rhos, conc, alpha, delta, om, &xi);
+  return xi;
 }
 
 int calc_xi_einasto(double*R, int NR, double Mass, double rhos, double conc, double alpha, int delta, double om, double*xi_einasto){
@@ -196,15 +184,9 @@ int calc_xi_mm(double*R, int NR, double*k, double*P, int Nk, double*xi, int N, d
 ///////Functions for calc_xi_mm/////////
 
 double xi_mm_at_R(double R, double*k, double*P, int Nk, int N, double h){
-  double*Ra = malloc(sizeof(double));
-  double*xi = malloc(sizeof(double));
-  double result;
-  Ra[0] = R;
-  calc_xi_mm(Ra, 1, k, P, Nk, xi, N, h);
-  result = xi[0];
-  free(Ra);
-  free(xi);
-  return result;
+  double xi = 0.0;
+  calc_xi_mm(&R, 1, k, P, Nk, &xi, N, h);
+  return xi;
 }
 
 //////////////////////////////////////////
@@ -244,7 +226,7 @@ int calc_xi_mm_exact(double*R, int NR, double*k, double*P, int Nk, double*xi){
   gsl_interp_accel*acc= gsl_interp_accel_alloc();
   gsl_integration_workspace*workspace = gsl_integration_workspace_alloc(workspace_size);
   gsl_integration_qawo_table*wf;
-  integrand_params_xi_mm_exact*params=malloc(sizeof(integrand_params_xi_mm_exact));
+  integrand_params_xi_mm_exact params;
   gsl_function F;
   double kmax = 4e3;
   double kmin = 5e-8;
@@ -252,14 +234,14 @@ int calc_xi_mm_exact(double*R, int NR, double*k, double*P, int Nk, double*xi){
   int i;
   int status;
   gsl_spline_init(Pspl, k, P, Nk);
-  params->acc = acc;
-  params->spline = Pspl;
-  params->kp = k;
-  params->Pp = P;
-  params->Nk = Nk;
+  params.acc = acc;
+  params.spline = Pspl;
+  params.kp = k;
+  params.Pp = P;
+  params.Nk = Nk;
 
-  F.function=&integrand_xi_mm_exact;
-  F.params=params;
+  F.function = &integrand_xi_mm_exact;
+  F.params = &params;
 
   wf = gsl_integration_qawo_table_alloc(R[0], kmax-kmin, GSL_INTEG_SINE, (size_t)workspace_num);
   for(i = 0; i < NR; i++){
@@ -268,7 +250,7 @@ int calc_xi_mm_exact(double*R, int NR, double*k, double*P, int Nk, double*xi){
       printf("Error in calc_xi_mm_exact, first integral.\n");
       exit(-1);
     }
-    params->r=R[i];
+    params.r=R[i];
     status = gsl_integration_qawo(&F, kmin, ABSERR, RELERR, (size_t)workspace_num, workspace, wf, &result, &err);
     if (status){
       printf("Error in calc_xi_mm_exact, second integral.\n");
@@ -278,7 +260,6 @@ int calc_xi_mm_exact(double*R, int NR, double*k, double*P, int Nk, double*xi){
     xi[i] = result/(M_PI*M_PI*2);
   }
 
-  free(params);
   gsl_spline_free(Pspl);
   gsl_interp_accel_free(acc);
   gsl_integration_workspace_free(workspace);
@@ -288,15 +269,9 @@ int calc_xi_mm_exact(double*R, int NR, double*k, double*P, int Nk, double*xi){
 }
 
 double xi_mm_at_R_exact(double R, double*k, double*P, int Nk){
-  double*Ra = malloc(sizeof(double));
-  double*xi = malloc(sizeof(double));
-  double result;
-  Ra[0] = R;
-  calc_xi_mm_exact(Ra, 1, k, P, Nk, xi);
-  result = xi[0];
-  free(Ra);
-  free(xi);
-  return result;
+  double xi = 0.0;
+  calc_xi_mm_exact(&R, 1, k, P, Nk, &xi);
+  return xi;
 }
 
 /*
@@ -343,15 +318,9 @@ int calc_xi_DK(double*R, int NR, double M, double rhos, double conc, double be, 
 }
 
 double xi_DK(double R, double M, double rhos, double conc, double be, double se, double alpha, double beta, double gamma, int delta, double*k, double*P, int Nk, double om){
-  double*Ra = malloc(sizeof(double));
-  double*xi = malloc(sizeof(double));
-  double result;
-  Ra[0] = R;
-  calc_xi_DK(Ra, 1, M, rhos, conc, be, se, alpha, beta, gamma, delta, k, P, Nk, om, xi);
-  result = xi[0];
-  free(Ra);
-  free(xi);
-  return result;
+  double xi = 0.0;
+  calc_xi_DK(&R, 1, M, rhos, conc, be, se, alpha, beta, gamma, delta, k, P, Nk, om, &xi);
+  return xi;
 }
 
 //////////////////////////////
@@ -397,15 +366,9 @@ int calc_xi_DK_app1(double*R, int NR, double M, double rhos, double conc, double
 }
 
 double xi_DK_app1(double R, double M, double rhos, double conc, double be, double se, double alpha, double beta, double gamma, int delta, double*k, double*P, int Nk, double om, double bias, double*xi_mm){
-  double*Ra = malloc(sizeof(double));
-  double*xi = malloc(sizeof(double));
-  double result;
-  Ra[0] = R;
-  calc_xi_DK_app1(Ra, 1, M, rhos, conc, be, se, alpha, beta, gamma, delta, k, P, Nk, om, bias, xi_mm, xi);
-  result = xi[0];
-  free(Ra);
-  free(xi);
-  return result;
+  double xi = 0.0;
+  calc_xi_DK_app1(&R, 1, M, rhos, conc, be, se, alpha, beta, gamma, delta, k, P, Nk, om, bias, xi_mm, &xi);
+  return xi;
 }
 
 //////////////////////////////
@@ -451,14 +414,7 @@ int calc_xi_DK_app2(double*R, int NR, double M, double rhos, double conc, double
 }
 
 double xi_DK_app2(double R, double M, double rhos, double conc, double be, double se, double alpha, double beta, double gamma, int delta, double*k, double*P, int Nk, double om, double bias, double*xi_mm){
-  double*Ra = malloc(sizeof(double));
-  double*xi = malloc(sizeof(double));
-  double result;
-  Ra[0] = R;
-  calc_xi_DK_app2(Ra, 1, M, rhos, conc, be, se, alpha, beta, gamma, delta, k, P, Nk, om, bias, xi_mm, xi);
-  result = xi[0];
-  free(Ra);
-  free(xi);
-  return result;
-
+  double xi = 0.0;
+  calc_xi_DK_app2(&R, 1, M, rhos, conc, be, se, alpha, beta, gamma, delta, k, P, Nk, om, bias, xi_mm, &xi);
+  return xi;
 }
