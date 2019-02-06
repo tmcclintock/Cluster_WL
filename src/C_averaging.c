@@ -41,11 +41,11 @@ double average_profile_in_bin(double Rlo, double Rhi, double*R, int NR, double*p
   gsl_integration_workspace * workspace
     = gsl_integration_workspace_alloc(workspace_size);
 
-  integrand_params*params=malloc(sizeof(integrand_params));
-  params->acc = acc;
-  params->spline = spline;
+  integrand_params params;
+  params.acc = acc;
+  params.spline = spline;
   gsl_function F;
-  F.params=params;
+  F.params = &params;
   double result, err;
   F.function = &ave_integrand;
 
@@ -53,7 +53,6 @@ double average_profile_in_bin(double Rlo, double Rhi, double*R, int NR, double*p
 
   gsl_spline_free(spline),gsl_interp_accel_free(acc);
   gsl_integration_workspace_free(workspace);
-  free(params);
 
   return 2*result/(Rhi*Rhi-Rlo*Rlo);
 }
@@ -65,11 +64,11 @@ int average_profile_in_bins(double*Redges, int Nedges, double*R, int NR, double*
   gsl_integration_workspace * workspace
     = gsl_integration_workspace_alloc(workspace_size);
 
-  integrand_params*params=malloc(sizeof(integrand_params));
-  params->acc = acc;
-  params->spline = spline;
+  integrand_params params;
+  params.acc = acc;
+  params.spline = spline;
   gsl_function F;
-  F.params=params;
+  F.params = &params;
   double result, err;
   F.function = &ave_integrand;
 
@@ -80,6 +79,5 @@ int average_profile_in_bins(double*Redges, int Nedges, double*R, int NR, double*
   }
   gsl_spline_free(spline),gsl_interp_accel_free(acc);
   gsl_integration_workspace_free(workspace);
-  free(params);
   return 0;
 }

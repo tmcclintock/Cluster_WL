@@ -21,15 +21,9 @@
 
 ///////////////// G multiplicity function///////////////////
 double G_at_M(double M, double*k, double*P, int Nk, double om, double d, double e, double f, double g){
-  double*Marr = (double*)malloc(sizeof(double));
-  double*G = (double*)malloc(sizeof(double));
-  double result;
-  Marr[0] = M;
-  G_at_M_arr(Marr, 1, k, P, Nk, om, d, e, f, g, G);
-  result = G[0];
-  free(Marr);
-  free(G);
-  return result;
+  double G = 0.0;
+  G_at_M_arr(&M, 1, k, P, Nk, om, d, e, f, g, &G);
+  return G;
 }
 
 int G_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, double d, double e, double f, double g, double*G){
@@ -45,15 +39,9 @@ int G_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, double d
 }
 
 double G_at_sigma(double sigma, double d, double e, double f, double g){
-  double*sig = (double*)malloc(sizeof(double));
-  double*G = (double*)malloc(sizeof(double));
-  double result;
-  sig[0] = sigma;
-  G_at_sigma_arr(sig, 1, d, e, f, g, G);
-  result = G[0];
-  free(sig);
-  free(G);
-  return result;
+  double G = 0.0;
+  G_at_sigma_arr(&sigma, 1, d, e, f, g, &G);
+  return G;
 }
 
 int G_at_sigma_arr(double*sigma, int Ns, double d, double e, double f, double g, double*G){
@@ -91,15 +79,9 @@ int dndM_sigma2_precomputed(double*M, double*sigma2, double*dsigma2dM, int NM, d
 }
 
 double dndM_at_M(double M, double*k, double*P, int Nk, double om, double d, double e, double f, double g){
-  double*Marr = (double*)malloc(sizeof(double));
-  double*dndM = (double*)malloc(sizeof(double));
-  double result;
-  Marr[0] = M;
-  dndM_at_M_arr(Marr, 1, k, P, Nk, om, d, e, f, g, dndM);
-  result = dndM[0];
-  free(Marr);
-  free(dndM);
-  return result;
+  double dndM = 0.0;
+  dndM_at_M_arr(&M, 1, k, P, Nk, om, d, e, f, g, &dndM);
+  return dndM;
 }
 
 int dndM_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, double d, double e, double f, double g, double*dndM){
@@ -123,16 +105,10 @@ int d2ndM2_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double Omega_m
 ///////////////// N in bin functions below ///////////////////
 
 double n_in_bin(double Mlo, double Mhi, double*M, double*dndM, int NM){
-  double*N = (double*)malloc(sizeof(double));
-  double*edges = (double*)malloc(2*sizeof(double));
-  double result;
-  edges[0] = Mlo;
-  edges[1] = Mhi;
-  n_in_bins(edges, 2, M, dndM, NM, N);
-  result = N[0];
-  free(N);
-  free(edges);
-  return result;
+  double edges[2] = { Mlo, Mhi };
+  double N = 0.0;
+  n_in_bins(edges, 2, M, dndM, NM, &N);
+  return N;
 }
 
 int n_in_bins(double*edges, int Nedges, double*M, double*dndM, int NM, double*N){

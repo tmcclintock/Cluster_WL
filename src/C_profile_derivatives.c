@@ -27,15 +27,9 @@
 #define RELERR 1.8e-4
 
 double drho_nfw_dr_at_R(double R, double Mass, double conc, int delta, double Omega_m){
-  double*Rarr = (double*)malloc(sizeof(double));
-  double*drhodr  = (double*)malloc(sizeof(double));
-  double result;
-  Rarr[0] = R;
-  drho_nfw_dr_at_R_arr(Rarr, 1, Mass, conc, delta, Omega_m, drhodr);
-  result = drhodr[0];
-  free(Rarr);
-  free(drhodr);
-  return result;
+  double drhodr = 0.0;
+  drho_nfw_dr_at_R_arr(&R, 1, Mass, conc, delta, Omega_m, &drhodr);
+  return drhodr;
 }
 
 int drho_nfw_dr_at_R_arr(double*R, int NR, double Mass, double conc,
@@ -94,26 +88,19 @@ double integrand_dxi_mm_dr_SINE(double k, void*params){
 }
 
 double dxi_mm_dr_at_R(double R, double*k, double*P, int Nk){
-  double*Rarr = (double*)malloc(sizeof(double));
-  double*dxidr  = (double*)malloc(sizeof(double));
-  double result;
-  Rarr[0] = R;
-  dxi_mm_dr_at_R_arr(Rarr, 1, k, P, Nk, dxidr);
-  result = dxidr[0];
-  free(Rarr);
-  free(dxidr);
-  return result;
+  double dxidr = 0.0;
+  dxi_mm_dr_at_R_arr(&R, 1, k, P, Nk, &dxidr);
+  return dxidr;
 }
 
 int dxi_mm_dr_at_R_arr(double*R, int NR, double*k, double*P, int Nk, double*dxidr){
   static int init_flag = 0;
   static gsl_interp_accel*acc;
   static gsl_integration_workspace*workspace;
-  static integrand_params_profile_derivs*params;
+  static integrand_params_profile_derivs params;
   if (!init_flag){
     acc = gsl_interp_accel_alloc();
     workspace = gsl_integration_workspace_alloc(workspace_size);
-    params = malloc(sizeof(integrand_params_profile_derivs));
     init_flag = 1;
   }
   
@@ -127,11 +114,11 @@ int dxi_mm_dr_at_R_arr(double*R, int NR, double*k, double*P, int Nk, double*dxid
   int i;
   int status;
   gsl_spline_init(Pspl, k, P, Nk);
-  params->acc = acc;
-  params->spline = Pspl;
-  params->kp = k;
-  params->Pp = P;
-  params->Nk = Nk;
+  params.acc = acc;
+  params.spline = Pspl;
+  params.kp = k;
+  params.Pp = P;
+  params.Nk = Nk;
 
   gsl_function F_cosine;
   gsl_function F_sine;
@@ -139,8 +126,8 @@ int dxi_mm_dr_at_R_arr(double*R, int NR, double*k, double*P, int Nk, double*dxid
   F_cosine.function = &integrand_dxi_mm_dr_COSINE;
   F_sine.function   = &integrand_dxi_mm_dr_SINE;
 
-  F_cosine.params = params;
-  F_sine.params   = params;
+  F_cosine.params = &params;
+  F_sine.params   = &params;
 
   wf_cosine = gsl_integration_qawo_table_alloc(R[0], kmax-kmin, GSL_INTEG_COSINE,
 					       (size_t)workspace_num);
@@ -153,7 +140,7 @@ int dxi_mm_dr_at_R_arr(double*R, int NR, double*k, double*P, int Nk, double*dxid
       printf("Error in dxi_mm_dr in qawo_table_set.\n");
       exit(-1);
     }
-    params->r=R[i];
+    params.r=R[i];
     status = gsl_integration_qawo(&F_cosine, kmin, ABSERR, RELERR, (size_t)workspace_num,
 				  workspace, wf_cosine, &result_cosine, &err);
     status = gsl_integration_qawo(&F_sine, kmin, ABSERR, RELERR, (size_t)workspace_num,
@@ -170,7 +157,6 @@ int dxi_mm_dr_at_R_arr(double*R, int NR, double*k, double*P, int Nk, double*dxid
   gsl_integration_qawo_table_free(wf_cosine);
   gsl_integration_qawo_table_free(wf_sine);
   //These are now static.
-  //free(params);
   //gsl_interp_accel_free(acc);
   //gsl_integration_workspace_free(workspace);
 

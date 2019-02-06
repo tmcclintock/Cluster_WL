@@ -130,15 +130,9 @@ int xi_1h_at_r_arr(double*r, int Nr, double M, double c,
 
 double xi_1h_at_r(double r, double M, double c,
 		  double rt, double beta, int delta, double Omega_m){
-  double*rs    = malloc(sizeof(double));
-  double*xi_1h = malloc(sizeof(double));
-  double result;
-  rs[0] = r;
-  xi_1h_at_r_arr(rs, 1, M, c, rt, beta, delta, Omega_m, xi_1h);
-  result = xi_1h[0];
-  free(rs);
-  free(xi_1h);
-  return result;
+  double xi_1h = 0.0;
+  xi_1h_at_r_arr(&r, 1, M, c, rt, beta, delta, Omega_m, &xi_1h);
+  return xi_1h;
 }
 
 int xi_2h_at_r_arr(double*r, int Nr, double bias, double*ximm, double*xi2h){
@@ -150,15 +144,9 @@ int xi_2h_at_r_arr(double*r, int Nr, double bias, double*ximm, double*xi2h){
 }
 
 double xi_2h_at_r(double r, double bias, double ximm){
-  double*rs    = malloc(sizeof(double));
-  double*xi_2h = malloc(sizeof(double));
-  double result;
-  rs[0] = r;
-  xi_2h_at_r_arr(rs, 1, bias, &ximm, xi_2h);
-  result = xi_2h[0];
-  free(rs);
-  free(xi_2h);
-  return result;
+  double xi_2h = 0.0;
+  xi_2h_at_r_arr(&r, 1, bias, &ximm, &xi_2h);
+  return xi_2h;
 }
 
 int xi_correction_at_r_arr(double*r, int Nr, double M, double rt,
@@ -188,13 +176,7 @@ int theta_erfc_at_r_arr(double*r, int Nr, double rt, double beta, double*theta){
 }
 
 double theta_erfc_at_r(double r, double rt, double beta){
-  double*rs     = malloc(sizeof(double));
-  double*thetas = malloc(sizeof(double));
-  double result;
-  rs[0] = r;
-  theta_erfc_at_r_arr(rs, 1, rt, beta, thetas);
-  result = thetas[0];
-  free(rs);
-  free(thetas);
-  return result;
+  double thetas = 0.0;
+  theta_erfc_at_r_arr(&r, 1, rt, beta, &thetas);
+  return thetas;
 }

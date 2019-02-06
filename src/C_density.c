@@ -50,14 +50,9 @@ int calc_rho_nfw(double*R, int NR, double Mass, double conc, int delta, double o
 }
 
 double rho_einasto_at_R(double R, double Mass, double rhos, double conc, double alpha, int delta, double om){
-  double*Rarr = (double*)malloc(sizeof(double));
-  double*rhoe = (double*)malloc(sizeof(double));
-  Rarr[0] = R;
-  calc_rho_einasto(Rarr, 1, Mass, rhos, conc, alpha, delta, om, rhoe);
-  double result = rhoe[0];
-  free(Rarr);
-  free(rhoe);
-  return result;
+  double rhoe = 0.0;
+  calc_rho_einasto(&R, 1, Mass, rhos, conc, alpha, delta, om, &rhoe);
+  return rhoe;
 }
 
 int calc_rho_einasto(double*R, int NR, double Mass, double rhos, double conc, double alpha, int delta, double om, double*rho_einasto){

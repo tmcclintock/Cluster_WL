@@ -77,7 +77,7 @@ double Mm_from_Mc(double Mc, void*params){
 double DK15_concentration_at_Mmean(double Mass, double*k, double*P, int Nk, int delta, double n_s,
 				   double Omega_b, double Omega_m, double h, double T_CMB){
   int status;
-  mc_params*pars = (mc_params*)malloc(sizeof(mc_params));
+  mc_params pars;
   double R = pow(Mass/(1.33333333333*M_PI*rhocrit*Omega_m*delta), 0.33333333); //R200m
   double M_lo = Mass/10;
   double M_hi = Mass*10;
@@ -87,20 +87,20 @@ double DK15_concentration_at_Mmean(double Mass, double*k, double*P, int Nk, int 
   gsl_root_fsolver*s = gsl_root_fsolver_alloc(T);
   gsl_function F;
   int iter = 0, max_iter = 100;
-  pars->Mm = Mass;
-  pars->Rm = R;
-  pars->k = k;
-  pars->P = P;
-  pars->Nk = Nk;
-  pars->delta = delta;
-  pars->h = h;
-  pars->n_s = n_s;
-  pars->Omega_b = Omega_b;
-  pars->Omega_m = Omega_m;
-  pars->T_CMB = T_CMB;
+  pars.Mm = Mass;
+  pars.Rm = R;
+  pars.k = k;
+  pars.P = P;
+  pars.Nk = Nk;
+  pars.delta = delta;
+  pars.h = h;
+  pars.n_s = n_s;
+  pars.Omega_b = Omega_b;
+  pars.Omega_m = Omega_m;
+  pars.T_CMB = T_CMB;
   
   F.function = &Mm_from_Mc;
-  F.params = pars;
+  F.params = &pars;
 
   status = gsl_root_fsolver_set(s, &F, M_lo, M_hi);
 
@@ -113,9 +113,8 @@ double DK15_concentration_at_Mmean(double Mass, double*k, double*P, int Nk, int 
     status = gsl_root_test_interval(M_lo, M_hi, 0, 0.001);
   }while(status == GSL_CONTINUE && iter < max_iter);
   
-  cm = pars->cm;
+  cm = pars.cm;
 
-  free(pars);
   gsl_root_fsolver_free(s);
   return cm;
 }

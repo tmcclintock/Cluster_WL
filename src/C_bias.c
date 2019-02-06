@@ -32,14 +32,9 @@
  * This is the Tinker et al. (2010) bias model.
  */
 double bias_at_nu(double nu, int delta){
-  double*nus  = malloc(sizeof(double));
-  double*bias = malloc(sizeof(double));
-  nus[0] = nu;
-  bias_at_nu_arr(nus, 1, delta, bias);
-  double result = bias[0];
-  free(nus);
-  free(bias);
-  return result;
+  double bias = 0.0;
+  bias_at_nu_arr(&nu, 1, delta, &bias);
+  return bias;
 }
 
 /**
@@ -52,14 +47,9 @@ double bias_at_nu(double nu, int delta){
  * This is the Tinker et al. (2010) bias model.
  */
 double bias_at_R(double R, int delta, double*k, double*P, int Nk){
-  double*Rs   = malloc(sizeof(double));
-  double*bias = malloc(sizeof(double));
-  Rs[0] = R;
-  bias_at_R_arr(Rs, 1, delta, k, P, Nk, bias);
-  double result = bias[0];
-  free(Rs);
-  free(bias);
-  return result;
+  double bias = 0.0;
+  bias_at_R_arr(&R, 1, delta, k, P, Nk, &bias);
+  return bias;
 }
 
 /**

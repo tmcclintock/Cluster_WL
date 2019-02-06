@@ -68,15 +68,9 @@ double dsigma2dR_integrand(double lk, void*params){
 
 double sigma2_at_R(double R, double*k, double*P, int Nk){
   //sigma^2(R) for a single value of R
-  double*Rs = (double*)malloc(sizeof(double));
-  double*s2 = (double*)malloc(sizeof(double));
-  double result;
-  Rs[0] = R;
-  sigma2_at_R_arr(Rs, 1, k, P, Nk, s2);
-  result = s2[0];
-  free(Rs);
-  free(s2);
-  return result;
+  double s2 = 0.0;
+  sigma2_at_R_arr(&R, 1, k, P, Nk, &s2);
+  return s2;
 }
 
 double sigma2_at_M(double M, double*k, double*P, int Nk, double om){
@@ -92,29 +86,28 @@ int sigma2_at_R_arr(double*R, int NR,  double*k, double*P, int Nk, double*s2){
   gsl_interp_accel*acc = gsl_interp_accel_alloc();
   gsl_integration_workspace*workspace = gsl_integration_workspace_alloc(workspace_size);
   gsl_function F;
-  integrand_params*params = (integrand_params*)malloc(sizeof(integrand_params));
+  integrand_params params;
   double lkmin = log(k[0]);
   double lkmax = log(k[Nk-1]);
   double result,abserr;
   double denom_inv = 1./(2*M_PI*M_PI);
   int i;
   gsl_spline_init(spline,k,P,Nk);
-  params->spline = spline;
-  params->acc = acc;
-  params->kp = k;
-  params->Pp = P;
-  params->Nk = Nk;
+  params.spline = spline;
+  params.acc = acc;
+  params.kp = k;
+  params.Pp = P;
+  params.Nk = Nk;
   F.function = &sigma2_integrand;
-  F.params = params;
+  F.params = &params;
   for(i = 0; i < NR; i++){
-    params->r = R[i];
+    params.r = R[i];
     gsl_integration_qag(&F, lkmin, lkmax, ABSERR, RELERR, workspace_size, KEY, workspace, &result, &abserr);
     s2[i] = result * denom_inv; //divide by 2pi^2
   }
   gsl_spline_free(spline);
   gsl_interp_accel_free(acc);
   gsl_integration_workspace_free(workspace);
-  free(params);
   return 0;
 }
 
@@ -138,44 +131,36 @@ int dsigma2dR_at_R_arr(double*R, int NR, double*k, double*P, int Nk, double*ds2d
   gsl_interp_accel*acc = gsl_interp_accel_alloc();
   gsl_integration_workspace*workspace = gsl_integration_workspace_alloc(workspace_size);
   gsl_function F;
-  integrand_params*params = (integrand_params*)malloc(sizeof(integrand_params));
+  integrand_params params;
   double lkmin = log(k[0]);
   double lkmax = log(k[Nk-1]);
   double result,abserr;
   double denom_inv = 1./(2*M_PI*M_PI);
   int i;
   gsl_spline_init(spline,k,P,Nk);
-  params->spline = spline;
-  params->acc = acc;
-  params->kp = k;
-  params->Pp = P;
-  params->Nk = Nk;
+  params.spline = spline;
+  params.acc = acc;
+  params.kp = k;
+  params.Pp = P;
+  params.Nk = Nk;
   F.function = &dsigma2dR_integrand;
-  F.params = params;
+  F.params = &params;
   for(i = 0; i < NR; i++){
-    params->r = R[i];
+    params.r = R[i];
     gsl_integration_qag(&F, lkmin, lkmax, ABSERR, RELERR, workspace_size, KEY, workspace, &result, &abserr);
     ds2dR[i] = result * denom_inv; //divide by 2pi^2
   }
   gsl_spline_free(spline);
   gsl_interp_accel_free(acc);
   gsl_integration_workspace_free(workspace);
-  free(params);
-  return 0;
   return 0;
 }
 
 double dsigma2dR_at_R(double R, double*k, double*P, int Nk){
   //sigma^2(R) for a single value of R
-  double*Rs = (double*)malloc(sizeof(double));
-  double*ds2dR = (double*)malloc(sizeof(double));
-  double result;
-  Rs[0] = R;
-  dsigma2dR_at_R_arr(Rs, 1, k, P, Nk, ds2dR);
-  result = ds2dR[0];
-  free(Rs);
-  free(ds2dR);
-  return result;
+  double ds2dR = 0.0;
+  dsigma2dR_at_R_arr(&R, 1, k, P, Nk, &ds2dR);
+  return ds2dR;
 }
 
 /* The derivative with respect to M of sigma^2. This is needed for the mass
@@ -200,15 +185,9 @@ int dsigma2dM_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double Omeg
 }
 
 double dsigma2dM_at_M(double M, double*k, double*P, int Nk, double Omega_m){
-  double*Ms = (double*)malloc(sizeof(double));
-  double*ds2dM = (double*)malloc(sizeof(double));
-  double result;
-  Ms[0] = M;
-  dsigma2dR_at_R_arr(Ms, 1, k, P, Nk, ds2dM);
-  result = ds2dM[0];
-  free(Ms);
-  free(ds2dM);
-  return result;
+  double ds2dM = 0.0;
+  dsigma2dR_at_R_arr(&M, 1, k, P, Nk, &ds2dM);
+  return ds2dM;
 }
 
 ///////////PEAK HEIGHT FUNCTIONS///////////
