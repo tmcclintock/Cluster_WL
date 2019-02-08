@@ -54,7 +54,7 @@ int ut_conv_thetat_at_r_arr(double*r, int Nr, double M1, double rt,
   double ratio1 = rt1/rdelta1;
   double rt2 = ratio1*rdelta2;
   double rc = rt2/c2; //scale radius of M2 halo
-  double re = r_exclusion(rt1, rt2, scheme); //TODO: make the scheme a variable to pass
+  double re = r_exclusion(rt1, rt2, scheme);
 
   //Create the wavenumbers to do the convolution over
   static int init_flag = 0;
@@ -125,6 +125,7 @@ int xi_1h_at_r_arr(double*r, int Nr, double M, double c,
   for(i = 0; i < Nr; i++){
     xi_1h[i] = (1+xi_1h[i]) * thetas[i];
   }
+  free(thetas);
   return 0; //success
 }
 
@@ -159,7 +160,7 @@ int xi_correction_at_r_arr(double*r, int Nr, double M, double rt,
   ut_conv_thetat_at_r_arr(r, Nr, M, rt, Ma, ca, delta, Omega_m, scheme, ut_conv_thetat_a);
   ut_conv_thetat_at_r_arr(r, Nr, M, rt, Mb, cb, delta, Omega_m, scheme, ut_conv_thetat_b);
   for(i = 0; i < Nr; i++){
-    xi_c[i]  = -ut_conv_thetat_a[i]*bias*ximm[i] - ut_conv_thetat_b[i];
+    xi_c[i]  = -bias*ut_conv_thetat_a[i]*ximm[i] - ut_conv_thetat_b[i];
   }
   free(ut_conv_thetat_a);
   free(ut_conv_thetat_b);
