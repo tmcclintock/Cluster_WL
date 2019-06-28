@@ -16,18 +16,17 @@ makes an approximation that reduces cosmology dependence, and
 `projected_P_BBPS_real` interpolates over a table of comoving distances to
 obtain a more precise answer.
 '''
-import astropy.constants as c
-import astropy.units as u
 import numpy as np
 from scipy.integrate import quad
 
 
 def _rho_crit(z, omega_m, omega_lambda):
     '''
-    The critical density of the universe, in units of $Msun*Mpc^{-3}*h^{-2}$.
+    The critical density of the universe, in units of $Msun*Mpc^{-3}*h^2$.
     '''
     # The constant is 3 * (100 km / s / Mpc)**2 / (8 * pi * G)
     # in units of Msun h^2 Mpc^{-3}
+    # (source: astropy's constants module and unit conversions)
     return 2.77536627e+11 * (omega_m * (1 + z)**3 + omega_lambda)
 
 
@@ -41,7 +40,9 @@ def P_delta(M, z, omega_b, omega_m, omega_lambda, delta=200):
     See BBPS, section 4.1 for details.
     Units: Msun s^{-2} Mpc^{-1}
     '''
-    return c.G * M * delta * _rho_crit(z, omega_m, omega_lambda) * \
+    # G = 4.51710305e-48 Mpc^3 Msun^{-1} s^{-2}
+    # (source: astropy's constants module and unit conversions)
+    return 4.51710305e-48 * M * delta * _rho_crit(z, omega_m, omega_lambda) * \
         omega_b / omega_m / 2 / R_delta(M, omega_m, omega_lambda, z, delta)
 
 
@@ -151,7 +152,7 @@ def projected_P_BBPS(r, M, z, omega_b, omega_m, omega_lambda,
     R_del = R_delta(M, z, omega_m, omega_lambda)
     return quad(lambda x: P_BBPS(np.sqrt(x*x + r*r), M, z,
                                  omega_b, omega_m,
-                                 omega_lambda).value,
+                                 omega_lambda),
                 -dist * R_del, dist * R_del,
                 epsrel=1e-3)[0] / (1 + z)
 
@@ -181,8 +182,7 @@ def projected_P_BBPS_real(r, M, z, omega_b, omega_m, omega_lambda, chis, zs,
     return quad(lambda x: P_BBPS(np.sqrt((x - chi_cluster)**2 + r*r),
                                  M, z,
                                  omega_b, omega_m,
-                                 omega_lambda).value
-                / (1 + np.interp(x, chis, zs)),
+                                 omega_lambda) / (1 + np.interp(x, chis, zs)),
                 chi_cluster - dist * R_del,
                 chi_cluster + dist * R_del,
                 epsrel=1e-3)[0]

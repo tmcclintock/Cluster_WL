@@ -56,30 +56,30 @@ def do_test_projection_approximation(n, epsrel=1e-6):
 
 
 def test_projection_approximation_1():
-    do_test_projection_approximation(1)
-    do_test_projection_approximation(1)
+    for i in range(8):
+        do_test_projection_approximation(1)
 
 
 def test_projection_approximation_2():
-    do_test_projection_approximation(2)
-    do_test_projection_approximation(2)
+    for i in range(8):
+        do_test_projection_approximation(2)
 
 
 def test_projection_approximation_3():
-    do_test_projection_approximation(3)
-    do_test_projection_approximation(3)
+    for i in range(8):
+        do_test_projection_approximation(3)
 
 
 def test_projection_approximation_4():
-    do_test_projection_approximation(4)
-    do_test_projection_approximation(4)
+    for i in range(8):
+        do_test_projection_approximation(4)
 
 
 def test_projection_approximation_5():
-    do_test_projection_approximation(5)
-    do_test_projection_approximation(5)
+    for i in range(8):
+        do_test_projection_approximation(5)
 
 
 def test_projection_approximation_6():
-    do_test_projection_approximation(6)
-    do_test_projection_approximation(6)
+    for i in range(8):
+        do_test_projection_approximation(6)
