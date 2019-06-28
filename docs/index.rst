@@ -29,6 +29,7 @@ The source code is publically available at https://github.com/tmcclintock/cluste
 
    source/installation
    source/density_profiles
+   source/pressure_profiles
    source/correlation_functions
    source/halo_bias
    source/projected_density_profiles
