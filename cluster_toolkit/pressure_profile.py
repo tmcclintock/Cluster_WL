@@ -132,7 +132,7 @@ def P_BBPS(r, M, z, omega_b, omega_m, omega_lambda):
 
 
 def projected_P_BBPS(r, M, z, omega_b, omega_m, omega_lambda,
-                     dist=8):
+                     dist=8, epsrel=1e-3):
     '''
     Computes the projected line-of-sight density of a cluster at a radius r
     from the cluster center.
@@ -154,11 +154,11 @@ def projected_P_BBPS(r, M, z, omega_b, omega_m, omega_lambda,
                                  omega_b, omega_m,
                                  omega_lambda),
                 -dist * R_del, dist * R_del,
-                epsrel=1e-3)[0] / (1 + z)
+                epsrel=epsrel)[0] / (1 + z)
 
 
 def projected_P_BBPS_real(r, M, z, omega_b, omega_m, omega_lambda, chis, zs,
-                          dist=8):
+                          dist=8, epsrel=1e-3):
     '''
     Computes the projected line-of-sight density of a cluster at a radius r
     from the cluster center.
@@ -185,4 +185,4 @@ def projected_P_BBPS_real(r, M, z, omega_b, omega_m, omega_lambda, chis, zs,
                                  omega_lambda) / (1 + np.interp(x, chis, zs)),
                 chi_cluster - dist * R_del,
                 chi_cluster + dist * R_del,
-                epsrel=1e-3)[0]
+                epsrel=epsrel)[0]

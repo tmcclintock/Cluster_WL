@@ -38,18 +38,22 @@ def sample_rMz():
     return r, M, z
 
 
-def do_test_projection_approximation(n, epsrel=1e-6):
+def do_test_projection_approximation(n, epsrel=1e-4):
     (Omega_b, Omega_m, Omega_lambda), z_chis, chis = get_cosmology(n)
     r, M, z = sample_rMz()
+
     # Compute the 'true' value
     expected = pp.projected_P_BBPS_real(r, M, z,
                                         Omega_b, Omega_m,
                                         Omega_lambda,
-                                        chis, z_chis)
+                                        chis, z_chis,
+                                        epsrel=epsrel*0.01)
+
     # Compute the approximate value
     actual = pp.projected_P_BBPS(r, M, z,
                                  Omega_b, Omega_m,
-                                 Omega_lambda)
+                                 Omega_lambda,
+                                 epsrel=epsrel*0.01)
 
     # Check that the relative difference is acceptable
     assert abs((expected - actual) / expected) < epsrel
