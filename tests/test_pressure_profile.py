@@ -45,14 +45,12 @@ def do_test_projection_approximation(n, epsrel=1e-4):
     # Compute the 'true' value
     expected = pp.projected_P_BBPS_real(r, M, z,
                                         Omega_b, Omega_m,
-                                        Omega_lambda,
                                         chis, z_chis,
                                         epsrel=epsrel*0.01)
 
     # Compute the approximate value
     actual = pp.projected_P_BBPS(r, M, z,
                                  Omega_b, Omega_m,
-                                 Omega_lambda,
                                  epsrel=epsrel*0.01)
 
     # Check that the relative difference is acceptable
