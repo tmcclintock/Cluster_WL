@@ -18,6 +18,7 @@ obtain a more precise answer.
 '''
 import numpy as np
 from scipy.integrate import quad
+import scipy.special as spec
 
 
 def _rho_crit(z, omega_m):
@@ -87,37 +88,6 @@ def P_simple_BBPS_generalized(x, M, z, P_0, x_c, beta,
     return P_0 * (x / x_c)**gamma * (1 + (x / x_c)**alpha)**(-beta)
 
 
-def P_BBPS_generalized(r, M, z, omega_b, omega_m,
-                       P_0, x_c, beta, alpha=1, gamma=-0.3, delta=200):
-    '''
-    The generalized NFW form of the Battaglia profile, presented in BBPS2
-    equation 10 as:
-
-    :math:`P = P_{\\Delta} P_0 (x / x_c)^\\gamma \
-                [1 + (x / x_c)^\\alpha]^{-\\beta}`
-
-    Where :math:`x = r/R_{\\Delta}`.
-
-    Args:
-        r (float): Radius from cluster center, in Mpc.
-        M (float): Halo mass M_{200}, in Msun.
-        z (float): Redshift to cluster.
-        omega_b (float): Baryon fraction.
-        omega_m (float): Matter fraction.
-        P_0 (float): Pressure scale parameter, see BBPS2 Eq. 10.
-        x_c (float): Core scale parameter, see BBPS2 Eq. 10.
-        beta (float): Asymptotic dropoff parameter, see BBPS2 Eq. 10.
-
-    Returns:
-        float: Pressure at a distance `r` from a cluster center, in units of \
-               Msun s^{-2} Mpc^{-1}.
-    '''
-    x = r / R_delta(M, z, omega_m, delta=delta)
-    Pd = P_delta(M, z, omega_b, omega_m, delta=delta)
-    return Pd * P_simple_BBPS_generalized(x, M, z, P_0, x_c, beta,
-                                          alpha=alpha, gamma=gamma, delta=delta)
-
-
 def _A_BBPS(M, z, A_0, alpha_m, alpha_z):
     '''
     Mass-Redshift dependency model for the generalized BBPS profile parameters,
@@ -140,32 +110,42 @@ def P_simple_BBPS(x, M, z):
     return P_simple_BBPS_generalized(x, M, z, P_0, x_c, beta)
 
 
-def P_BBPS(r, M, z, omega_b, omega_m):
+def P_BBPS(r, M, z, omega_b, omega_m,
+           params_P_0=(18.1, 0.154, -0.758),
+           params_x_c=(0.497, -0.00865, 0.731),
+           params_beta=(4.35, 0.0393, 0.415),
+           alpha=1,
+           gamma=-0.3,
+           delta=200):
     '''
     The best-fit pressure profile presented in BBPS2.
 
     Args:
-        r (float): Radius from the cluster center, in Mpc.
+        r (float): Radius from the cluster center, in Mpc :math:`h^{-2/3}`.
         M (float): Cluster :math:`M_{\\Delta}`, in Msun.
         z (float): Cluster redshift.
         omega_b (float): Baryon fraction.
         omega_m (float): Matter fraction.
+        params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift dependence \
+                parameters A, :math:`\\alpha_m`, :math:`\\alpha_z`, \
+                respectively. See BBPS2 Equation 11.
+        params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift dependence, \
+                same as `params_P_0`.
+        params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
+                dependence, same as `params_P_0`.
 
     Returns:
         float: Pressure at distance `r` from the cluster, in units of \
-               Msun s^{-2} Mpc^{-1}.
+                :math:`h^{8/3} Msun s^{-2} Mpc^{-1}`.
     '''
-    # These are the best-fit parameters from BBPS2 Table 1, under AGN Feedback
-    # \Delta = 200
-    params_P = (18.1, 0.154, -0.758)
-    params_x_c = (0.497, -0.00865, 0.731)
-    params_beta = (4.35, 0.0393, 0.415)
-
-    P_0 = _A_BBPS(M, z, *params_P)
+    P_0 = _A_BBPS(M, z, *params_P_0)
     x_c = _A_BBPS(M, z, *params_x_c)
     beta = _A_BBPS(M, z, *params_beta)
-    return P_BBPS_generalized(r, M, z, omega_b, omega_m,
-                              P_0, x_c, beta)
+
+    x = r / R_delta(M, z, omega_m, delta=delta)
+    Pd = P_delta(M, z, omega_b, omega_m, delta=delta)
+    return Pd * P_simple_BBPS_generalized(x, M, z, P_0, x_c, beta,
+                                          alpha=alpha, gamma=gamma, delta=delta)
 
 
 def projected_P_BBPS(r, M, z, omega_b, omega_m,
@@ -193,7 +173,7 @@ def projected_P_BBPS(r, M, z, omega_b, omega_m,
 
 
 def projected_y_BBPS(r, M, z, omega_b, omega_m,
-                     dist=8, epsrel=1e-3):
+                     Xh=0.76, dist=8, epsrel=1e-3):
     '''
     Projected Compton-y parameter along the line of sight, at a perpendicular
     distance `r` from a cluster of mass `M` at redshift `z`. All arguments have
@@ -205,6 +185,7 @@ def projected_y_BBPS(r, M, z, omega_b, omega_m,
         z (float): Cluster redshift.
         omega_b (float): Baryon fraction.
         omega_m (float): Matter fraction.
+        Xh (float): Primordial hydrogen mass fraction.
 
     Returns:
         float: Compton y parameter. Unitless.
@@ -213,8 +194,47 @@ def projected_y_BBPS(r, M, z, omega_b, omega_m,
     # divided by the mass-energy of the electron, in units of s^2 Msun^{-1}.
     # Source: Astropy constants and unit conversions.
     cy = 1.61574202e+15
-    return cy * projected_P_BBPS(r, M, z, omega_b, omega_m,
-                                 dist=dist, epsrel=epsrel)
+    # We need to convert from GAS pressure to ELECTRON pressure. This is the
+    # equation to do so, see BBPS2 p. 3.
+    ch = (2 * Xh + 2) / (5 * Xh + 3)
+    return ch * cy * projected_P_BBPS(r, M, z, omega_b, omega_m,
+                                      dist=dist, epsrel=epsrel)
+
+
+def Cxl(M, z, omega_b, omega_m, da, ell,
+        dist=8, epsrel=1e-3):
+    '''
+    The Fourier-transform of a cluster's Compton y parameter on the sky. Assumes
+    the flat-sky approximation.
+
+    Args:
+        M (float): Cluster :math:`M_{\\Delta}`, in Msun.
+        z (float): Cluster redshift.
+        omega_b (float): Baryon fraction.
+        omega_m (float): Matter fraction.
+        d_a (float): Angular diameter distance at redshift `z`. Should be \
+                     in Mpc.
+        ell (float): The Fourier-transform wavenumber.
+
+    Returns:
+        float: :math:`C_{x, l}`. Unitless.
+    '''
+    return quad(lambda theta: 2 * np.pi * theta * spec.j0(ell * theta)
+                * projected_y_BBPS(theta * da, M, z, omega_b, omega_m,
+                                   dist=dist, epsrel=epsrel),
+                0, 2 * np.pi,
+                epsrel=epsrel)[0]
+
+
+def smoothed_xi(theta, M, z, omega_b, omega_m, da,
+                dist=8, epsrel=1e-3, maxl=10000):
+    # Convert from arcmin to radians
+    theta = theta * 60 * np.pi / 180
+    return quad(lambda ell: 1 / (2 * np.pi) * ell * spec.j0(ell * theta)
+                * Cxl(M, z, omega_b, omega_m, da, ell,
+                      dist=dist, epsrel=epsrel),
+                0, maxl,
+                epsrel=epsrel)[0]
 
 
 def projected_P_BBPS_real(r, M, z, omega_b, omega_m, chis, zs,
@@ -240,7 +260,8 @@ def projected_P_BBPS_real(r, M, z, omega_b, omega_m, chis, zs,
     chi_cluster = np.interp(z, zs, chis)
     return quad(lambda x: P_BBPS(np.sqrt((x - chi_cluster)**2 + r*r),
                                  M, z,
-                                 omega_b, omega_m) / (1 + np.interp(x, chis, zs)),
+                                 omega_b, omega_m)
+                / (1 + np.interp(x, chis, zs)),
                 chi_cluster - dist * R_del,
                 chi_cluster + dist * R_del,
                 epsrel=epsrel)[0]
