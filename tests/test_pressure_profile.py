@@ -2,6 +2,8 @@ from cluster_toolkit import pressure_profile as pp
 import math
 import numpy as np
 import os
+import pandas as pd
+import pytest
 import random
 
 
@@ -24,7 +26,9 @@ def get_cosmology(n):
                 omega_m = float(val)
             if name == 'omega_lambda':
                 omega_lambda = float(val)
-    return (omega_b, omega_m, omega_lambda), z_chis, chis
+            if name == 'h0':
+                h0 = float(val)
+    return (omega_b, omega_m, omega_lambda, h0), z_chis, chis
 
 
 def sample_rMz():
@@ -39,7 +43,7 @@ def sample_rMz():
 
 
 def do_test_projection_approximation(n, epsrel=1e-4):
-    (Omega_b, Omega_m, Omega_lambda), z_chis, chis = get_cosmology(n)
+    (Omega_b, Omega_m, Omega_lambda, h0), z_chis, chis = get_cosmology(n)
     r, M, z = sample_rMz()
 
     # Compute the 'true' value
@@ -55,6 +59,11 @@ def do_test_projection_approximation(n, epsrel=1e-4):
 
     # Check that the relative difference is acceptable
     assert abs((expected - actual) / expected) < epsrel
+
+
+def test_projection_approximation_0():
+    for i in range(8):
+        do_test_projection_approximation(0)
 
 
 def test_projection_approximation_1():
@@ -85,3 +94,42 @@ def test_projection_approximation_5():
 def test_projection_approximation_6():
     for i in range(8):
         do_test_projection_approximation(6)
+
+
+def test_pressure():
+    (Omega_b, Omega_m, Omega_lambda, h0), z_chis, chis = get_cosmology(0)
+    profiles = pd.read_csv(os.path.join(os.path.dirname(__file__),
+                                        'data_for_testing/y_profiles.csv'))
+    for ibin in profiles.ibin.unique():
+        bin_ = profiles[profiles.ibin == ibin]
+        Xh = 0.76
+        # TODO better way to get this?
+        row1 = next(bin_.iterrows())[1]
+        M200, z = row1.M200, row1.z
+        for r, P in zip(bin_.r, bin_.P):
+            ourP = pp.P_BBPS(r * h0**(2/3), M200, z, Omega_b, Omega_m)
+            # Convert to dimensionless `y` (see pp.projected_y_BBPS)
+            ourP *= 1.61574202e+15
+            # Make unitful
+            ourP *= h0**(8/3)
+            # Adjust P_{gas} to P_{electron}
+            ourP *= (2 * Xh + 2) / (5 * Xh + 3)
+            assert abs((ourP - P) / P) < 5e-3
+
+
+@pytest.mark.skip(reason='fiducial table used different integration method')
+def test_y_projection():
+    (Omega_b, Omega_m, Omega_lambda, h0), z_chis, chis = get_cosmology(0)
+    profiles = pd.read_csv(os.path.join(os.path.dirname(__file__),
+                                        'data_for_testing/y_profiles.csv'))
+    for ibin in profiles.ibin.unique():
+        bin_ = profiles[profiles.ibin == ibin]
+        # TODO better way to get this?
+        row1 = next(bin_.iterrows())[1]
+        M200, z = row1.M200, row1.z
+        for r, y in zip(bin_.r, bin_.y):
+            oury = pp.projected_y_BBPS(r * h0**(2/3), M200, z, Omega_b, Omega_m)
+            # Convert to dimensionless `y` (see pp.projected_y_BBPS)
+            oury *= h0**(8/3)
+            assert abs((oury - y) / y) < 1e-2
+            # TODO check projected
