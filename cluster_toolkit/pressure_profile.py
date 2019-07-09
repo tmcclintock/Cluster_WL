@@ -16,6 +16,7 @@ makes an approximation that reduces cosmology dependence, and
 `projected_P_BBPS_real` interpolates over a table of comoving distances to
 obtain a more precise answer.
 '''
+
 import numpy as np
 from scipy.integrate import quad
 import scipy.special as spec
@@ -32,6 +33,27 @@ def _rho_crit(z, omega_m):
     # in units of Msun h^2 Mpc^{-3}
     # (source: astropy's constants module and unit conversions)
     return 2.77536627e+11 * (omega_m * (1 + z)**3 + omega_lambda)
+
+
+def R_delta(M, z, omega_m, delta=200):
+    '''
+    The radius of a sphere of mass M (in Msun), which has a density `delta`
+    times the critical density of the universe.
+
+    :math:`R_{\\Delta} = \\Big(\\frac{3 M_{\\Delta}} \
+                                     {8 \\pi \\Delta \\rho_{crit}}\Big)^{1/3}`
+
+    Args:
+        M (float): Halo mass :math:`M_{\\Delta}`, in units of Msun.
+        omega_b (float): The baryon fraction :math:`\\Omega_b`.
+        omega_m (float): The matter fraction :math:`\\Omega_m`.
+        delta (float): The halo overdensity :math:`\\Delta`.
+
+    Returns:
+        float: Radius, in :math:`\\text{Mpc} h^\\frac{-2}{3}`.
+    '''
+    volume = M / (delta * _rho_crit(z, omega_m))
+    return (3 * volume / (4 * np.pi))**(1./3)
 
 
 def P_delta(M, z, omega_b, omega_m, delta=200):
@@ -55,28 +77,7 @@ def P_delta(M, z, omega_b, omega_m, delta=200):
     # G = 4.51710305e-48 Mpc^3 Msun^{-1} s^{-2}
     # (source: astropy's constants module and unit conversions)
     return 4.51710305e-48 * M * delta * _rho_crit(z, omega_m) * \
-        omega_b / omega_m / 2 / R_delta(M, omega_m, z, delta)
-
-
-def R_delta(M, z, omega_m, delta=200):
-    '''
-    The radius of a sphere of mass M (in Msun), which has a density `delta`
-    times the critical density of the universe.
-
-    :math:`R_{\\Delta} = \\Big(\\frac{3 M_{\\Delta}} \
-                                     {8 \\pi \\Delta \\rho_{crit}}\Big)^{1/3}`
-
-    Args:
-        M (float): Halo mass :math:`M_{\\Delta}`, in units of Msun.
-        omega_b (float): The baryon fraction :math:`\\Omega_b`.
-        omega_m (float): The matter fraction :math:`\\Omega_m`.
-        delta (float): The halo overdensity :math:`\\Delta`.
-
-    Returns:
-        float: Radius, in :math:`\\text{Mpc} h^\\frac{-2}{3}`.
-    '''
-    volume = M / (delta * _rho_crit(z, omega_m))
-    return (3 * volume / (4 * np.pi))**(1./3)
+        (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, delta))
 
 
 def P_simple_BBPS_generalized(x, M, z, P_0, x_c, beta,
@@ -114,8 +115,7 @@ def P_BBPS(r, M, z, omega_b, omega_m,
            params_P_0=(18.1, 0.154, -0.758),
            params_x_c=(0.497, -0.00865, 0.731),
            params_beta=(4.35, 0.0393, 0.415),
-           alpha=1,
-           gamma=-0.3,
+           alpha=1, gamma=-0.3,
            delta=200):
     '''
     The best-fit pressure profile presented in BBPS2.
