@@ -53,9 +53,9 @@ def do_test_projection_approximation(n, epsrel=1e-4):
                                         epsrel=epsrel*0.01)
 
     # Compute the approximate value
-    actual = pp.projected_P_BBPS(r, M, z,
-                                 Omega_b, Omega_m,
-                                 epsrel=epsrel*0.01)
+    actual = pp.py_projected_P_BBPS(r, M, z,
+                                    Omega_b, Omega_m,
+                                    epsrel=epsrel*0.01)
 
     # Check that the relative difference is acceptable
     assert abs((expected - actual) / expected) < epsrel
