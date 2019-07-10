@@ -36,4 +36,4 @@ def _dcast(x):
 
 from . import (averaging, bias, boostfactors, concentration, deltasigma,
                density, exclusion, massfunction, miscentering, peak_height,
-               pressure_profile, profile_derivatives, sigma_reconstruction, xi)
+               pressure, profile_derivatives, sigma_reconstruction, xi)

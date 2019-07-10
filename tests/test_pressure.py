@@ -1,4 +1,4 @@
-from cluster_toolkit import pressure_profile as pp
+from cluster_toolkit import pressure as pp
 import math
 import numpy as np
 import os
@@ -47,15 +47,15 @@ def do_test_projection_approximation(n, epsrel=1e-4):
     r, M, z = sample_rMz()
 
     # Compute the 'true' value
-    expected = pp.projected_P_BBPS_real(r, M, z,
-                                        Omega_b, Omega_m,
-                                        chis, z_chis,
-                                        epsrel=epsrel*0.01)
+    expected = pp._projected_P_BBPS_real(r, M, z,
+                                         Omega_b, Omega_m,
+                                         chis, z_chis,
+                                         epsrel=epsrel*0.01)
 
     # Compute the approximate value
-    actual = pp.py_projected_P_BBPS(r, M, z,
-                                    Omega_b, Omega_m,
-                                    epsrel=epsrel*0.01)
+    actual = pp._py_projected_P_BBPS(r, M, z,
+                                     Omega_b, Omega_m,
+                                     epsrel=epsrel*0.01)
 
     # Check that the relative difference is acceptable
     assert abs((expected - actual) / expected) < epsrel

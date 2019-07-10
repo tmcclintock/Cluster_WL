@@ -9,12 +9,9 @@ This module implements pressure profiles presented by Battaglia et al. 2012
 (https://ui.adsabs.harvard.edu/abs/2012ApJ...758...75B/abstract), referred to
 as BBPS.
 
-Their best-fit pressure profile is implemented in the function
+Their best-fit 3D pressure profile is implemented in the function
 `P_BBPS`, and projected profiles are implemented in `projected_P_BBPS` and
-`projected_P_BBPS_real`. The difference in the latter is that `projected_P_BBPS`
-makes an approximation that reduces cosmology dependence, and
-`projected_P_BBPS_real` interpolates over a table of comoving distances to
-obtain a more precise answer.
+`projected_y_BBPS`.
 '''
 
 from cluster_toolkit import _dcast, _lib
@@ -23,10 +20,15 @@ from scipy.integrate import quad
 import scipy.special as spec
 
 
+__BBPS_params_P_0 = (18.1, 0.154, -0.758)
+__BBPS_params_x_c = (0.497, -0.00865, 0.731)
+__BBPS_params_beta = (4.35, 0.0393, 0.415)
+
+
 def P_BBPS(r, M, z, omega_b, omega_m,
-           params_P_0=(18.1, 0.154, -0.758),
-           params_x_c=(0.497, -0.00865, 0.731),
-           params_beta=(4.35, 0.0393, 0.415),
+           params_P_0=__BBPS_params_P_0,
+           params_x_c=__BBPS_params_x_c,
+           params_beta=__BBPS_params_beta,
            alpha=1, gamma=-0.3,
            delta=200):
     '''
@@ -42,11 +44,14 @@ def P_BBPS(r, M, z, omega_b, omega_m,
         omega_m (float): Matter fraction.
         params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift dependence \
                 parameters A, :math:`\\alpha_m`, :math:`\\alpha_z`, \
-                respectively. See BBPS2 Equation 11.
+                respectively. See BBPS2 Equation 11. Default is BBPS2's \
+                best-fit.
         params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift dependence, \
-                same as `params_P_0`.
+                same as `params_P_0`. Default is BBPS2's \
+                best-fit.
         params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
-                dependence, same as `params_P_0`.
+                dependence, same as `params_P_0`. Default is BBPS2's \
+                best-fit.
 
     Returns:
         float: Pressure at distance `r` from the cluster, in units of \
@@ -83,9 +88,9 @@ def P_BBPS(r, M, z, omega_b, omega_m,
 
 
 def projected_P_BBPS(r, M, z, omega_b, omega_m,
-                     params_P=(18.1, 0.154, -0.758),
-                     params_x_c=(0.497, -0.00865, 0.731),
-                     params_beta=(4.35, 0.0393, 0.415),
+                     params_P_0=__BBPS_params_P_0,
+                     params_x_c=__BBPS_params_x_c,
+                     params_beta=__BBPS_params_beta,
                      alpha=1, gamma=-0.3,
                      delta=200,
                      limit=1000,
@@ -101,6 +106,16 @@ def projected_P_BBPS(r, M, z, omega_b, omega_m,
         z (float): Cluster redshift.
         omega_b (float): Baryon fraction.
         omega_m (float): Matter fraction.
+        params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift dependence \
+                parameters A, :math:`\\alpha_m`, :math:`\\alpha_z`, \
+                respectively. See BBPS2 Equation 11. Default is BBPS2's \
+                best-fit.
+        params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift dependence, \
+                same as `params_P_0`. Default is BBPS2's \
+                best-fit.
+        params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
+                dependence, same as `params_P_0`. Default is BBPS2's \
+                best-fit.
 
     Returns:
         float or array: Integrated line-of-sight pressure at distance `r` from \
@@ -120,7 +135,7 @@ def projected_P_BBPS(r, M, z, omega_b, omega_m,
     P_err_out = np.zeros_like(r, dtype=np.double)
 
     # Set parameters
-    P_0 = _A_BBPS(M, z, *params_P)
+    P_0 = _A_BBPS(M, z, *params_P_0)
     x_c = _A_BBPS(M, z, *params_x_c)
     beta = _A_BBPS(M, z, *params_beta)
 
@@ -169,13 +184,13 @@ def R_delta(M, z, omega_m, delta=200):
                                      {8 \\pi \\Delta \\rho_{crit}}\Big)^{1/3}`
 
     Args:
-        M (float): Halo mass :math:`M_{\\Delta}`, in units of Msun.
-        z (float): Redshift to the cluster center.
-        omega_m (float): The matter fraction :math:`\\Omega_m`.
-        delta (float): The halo overdensity :math:`\\Delta`.
+        M (float or array): Halo mass :math:`M_{\\Delta}`, in units of Msun.
+        z (float or array): Redshift to the cluster center.
+        omega_m (float or array): The matter fraction :math:`\\Omega_m`.
+        delta (float or array): The halo overdensity :math:`\\Delta`.
 
     Returns:
-        float: Radius, in :math:`\\text{Mpc} h^\\frac{-2}{3}`.
+        float or array: Radius, in :math:`\\text{Mpc} h^\\frac{-2}{3}`.
     '''
     volume = M / (delta * _rho_crit(z, omega_m))
     return (3 * volume / (4 * np.pi))**(1./3)
@@ -205,15 +220,6 @@ def P_delta(M, z, omega_b, omega_m, delta=200):
         (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, delta))
 
 
-def P_simple_BBPS_generalized(x, M, z, P_0, x_c, beta,
-                              alpha=1, gamma=-0.3, delta=200):
-    '''
-    The generalized dimensionless BBPS pressure profile. Input x should be
-    :math:`r / R_{\\Delta}`.
-    '''
-    return P_0 * (x / x_c)**gamma * (1 + (x / x_c)**alpha)**(-beta)
-
-
 def _A_BBPS(M, z, A_0, alpha_m, alpha_z):
     '''
     Mass-Redshift dependency model for the generalized BBPS profile parameters,
@@ -223,20 +229,12 @@ def _A_BBPS(M, z, A_0, alpha_m, alpha_z):
     return A_0 * (M / 10**14)**alpha_m * (1 + z)**alpha_z
 
 
-def P_simple_BBPS(x, M, z):
-    '''
-    The best-fit pressure profile presented in BBPS2.
-    '''
-    params_P = (18.1, 0.154, -0.758)
-    params_x_c = (0.497, -0.00865, 0.731)
-    params_beta = (4.35, 0.0393, 0.415)
-    P_0 = _A_BBPS(M, z, *params_P)
-    x_c = _A_BBPS(M, z, *params_x_c)
-    beta = _A_BBPS(M, z, *params_beta)
-    return P_simple_BBPS_generalized(x, M, z, P_0, x_c, beta)
-
-
 def projected_y_BBPS(r, M, z, omega_b, omega_m,
+                     params_P_0=__BBPS_params_P_0,
+                     params_x_c=__BBPS_params_x_c,
+                     params_beta=__BBPS_params_beta,
+                     alpha=1, gamma=-0.3,
+                     delta=200,
                      Xh=0.76, epsrel=1e-3):
     '''
     Projected Compton-y parameter along the line of sight, at a perpendicular
@@ -263,6 +261,11 @@ def projected_y_BBPS(r, M, z, omega_b, omega_m,
     # equation to do so, see BBPS2 p. 3.
     ch = (2 * Xh + 2) / (5 * Xh + 3)
     return ch * cy * projected_P_BBPS(r, M, z, omega_b, omega_m,
+                                      params_P_0=params_P_0,
+                                      params_x_c=params_x_c,
+                                      params_beta=params_beta,
+                                      alpha=alpha, gamma=gamma,
+                                      delta=delta,
                                       epsrel=epsrel)
 
 
@@ -306,8 +309,8 @@ def smoothed_xi(theta, M, z, omega_b, omega_m, da,
 # The following functions are for testing only!! #
 ##################################################
 
-def py_projected_P_BBPS(r, M, z, omega_b, omega_m,
-                        dist=8, epsrel=1e-3):
+def _py_projected_P_BBPS(r, M, z, omega_b, omega_m,
+                         dist=8, epsrel=1e-3):
     '''
     Computes the projected line-of-sight density of a cluster at a radius r
     from the cluster center.
@@ -330,8 +333,8 @@ def py_projected_P_BBPS(r, M, z, omega_b, omega_m,
                 epsrel=epsrel)[0] / (1 + z)
 
 
-def projected_P_BBPS_real(r, M, z, omega_b, omega_m, chis, zs,
-                          dist=8, epsrel=1e-3):
+def _projected_P_BBPS_real(r, M, z, omega_b, omega_m, chis, zs,
+                           dist=8, epsrel=1e-3):
     '''
     Computes the projected line-of-sight density of a cluster at a radius r
     from the cluster center.
