@@ -17,7 +17,6 @@ Their best-fit 3D pressure profile is implemented in the function
 from cluster_toolkit import _dcast, _lib
 import numpy as np
 from scipy.integrate import quad
-import scipy.special as spec
 
 
 __BBPS_params_P_0 = (18.1, 0.154, -0.758)
@@ -267,42 +266,6 @@ def projected_y_BBPS(r, M, z, omega_b, omega_m,
                                       alpha=alpha, gamma=gamma,
                                       delta=delta,
                                       epsrel=epsrel)
-
-
-def Cxl(M, z, omega_b, omega_m, da, ell,
-        epsrel=1e-3):
-    '''
-    The Fourier-transform of a cluster's Compton y parameter on the sky. Assumes
-    the flat-sky approximation.
-
-    Args:
-        M (float): Cluster :math:`M_{\\Delta}`, in Msun.
-        z (float): Cluster redshift.
-        omega_b (float): Baryon fraction.
-        omega_m (float): Matter fraction.
-        d_a (float): Angular diameter distance at redshift `z`. Should be \
-                     in Mpc.
-        ell (float): The Fourier-transform wavenumber.
-
-    Returns:
-        float: :math:`C_{x, l}`. Unitless.
-    '''
-    return quad(lambda theta: 2 * np.pi * theta * spec.j0(ell * theta)
-                * projected_y_BBPS(theta * da, M, z, omega_b, omega_m,
-                                   epsrel=epsrel),
-                0, 2 * np.pi,
-                epsrel=epsrel)[0]
-
-
-def smoothed_xi(theta, M, z, omega_b, omega_m, da,
-                epsrel=1e-3, maxl=10000):
-    # Convert from arcmin to radians
-    theta = theta * 60 * np.pi / 180
-    return quad(lambda ell: 1 / (2 * np.pi) * ell * spec.j0(ell * theta)
-                * Cxl(M, z, omega_b, omega_m, da, ell,
-                      epsrel=epsrel),
-                0, maxl,
-                epsrel=epsrel)[0]
 
 
 ##################################################
