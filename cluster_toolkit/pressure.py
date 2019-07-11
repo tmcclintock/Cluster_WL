@@ -7,158 +7,22 @@ Galaxy cluster pressure profiles.
 
 This module implements pressure profiles presented by Battaglia et al. 2012
 (https://ui.adsabs.harvard.edu/abs/2012ApJ...758...75B/abstract), referred to
-as BBPS.
+as BBPS. Calculations related to it are in the class :class:`BBPSProfile`.
 
-Their best-fit 3D pressure profile is implemented in the function
-`P_BBPS`, and projected profiles are implemented in `projected_P_BBPS` and
-`projected_y_BBPS`.
+The best-fit 3D profile is implemented in :meth:`BBPSProfile.pressure`. Its 3D
+projection and the projected Compton-y parameter are computed by
+:meth:`BBPSProfile.projected_pressure` and :meth:`BBPSProfile.compton_y`,
+respectively.
 '''
 
 from cluster_toolkit import _dcast, _lib
 import numpy as np
 from scipy.integrate import quad
 
-
-__BBPS_params_P_0 = (18.1, 0.154, -0.758)
-__BBPS_params_x_c = (0.497, -0.00865, 0.731)
-__BBPS_params_beta = (4.35, 0.0393, 0.415)
-
-
-def P_BBPS(r, M, z, omega_b, omega_m,
-           params_P_0=__BBPS_params_P_0,
-           params_x_c=__BBPS_params_x_c,
-           params_beta=__BBPS_params_beta,
-           alpha=1, gamma=-0.3,
-           delta=200):
-    '''
-    The best-fit pressure profile presented in BBPS2.
-
-    Args:
-        r (float or array): Radii from the cluster center, \
-                            in Mpc :math:`h^{-2/3}`. If an array, an array \
-                            is returned, if a scalar, a scalar is returned.
-        M (float): Cluster :math:`M_{\\Delta}`, in Msun.
-        z (float): Cluster redshift.
-        omega_b (float): Baryon fraction.
-        omega_m (float): Matter fraction.
-        params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift dependence \
-                parameters A, :math:`\\alpha_m`, :math:`\\alpha_z`, \
-                respectively. See BBPS2 Equation 11. Default is BBPS2's \
-                best-fit.
-        params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift dependence, \
-                same as `params_P_0`. Default is BBPS2's \
-                best-fit.
-        params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
-                dependence, same as `params_P_0`. Default is BBPS2's \
-                best-fit.
-
-    Returns:
-        float: Pressure at distance `r` from the cluster, in units of \
-                :math:`h^{8/3} Msun s^{-2} Mpc^{-1}`.
-    '''
-    r = np.asarray(r, dtype=np.double)
-
-    scalar_input = False
-    if r.ndim == 0:
-        scalar_input = True
-        # Convert r to 2d
-        r = r[None]
-    if r.ndim > 1:
-        raise Exception('r cannot be a >1D array.')
-
-    P_out = np.zeros_like(r, dtype=np.double)
-
-    # Set parameters
-    P_0 = _A_BBPS(M, z, *params_P_0)
-    x_c = _A_BBPS(M, z, *params_x_c)
-    beta = _A_BBPS(M, z, *params_beta)
-
-    _lib.P_BBPS(_dcast(P_out),
-                _dcast(r), len(r),
-                M, z,
-                omega_b, omega_m,
-                P_0, x_c, beta,
-                float(alpha), gamma,
-                delta)
-
-    if scalar_input:
-        return np.squeeze(P_out)
-    return P_out
-
-
-def projected_P_BBPS(r, M, z, omega_b, omega_m,
-                     params_P_0=__BBPS_params_P_0,
-                     params_x_c=__BBPS_params_x_c,
-                     params_beta=__BBPS_params_beta,
-                     alpha=1, gamma=-0.3,
-                     delta=200,
-                     limit=1000,
-                     epsabs=1e-15, epsrel=1e-3,
-                     return_errs=False):
-    '''
-    Computes the projected line-of-sight pressure of a cluster at a radius r
-    from the cluster center.
-
-    Args:
-        r (float or array): Radius from the cluster center, in Mpc.
-        M (float): Cluster :math:`M_{\\Delta}`, in Msun.
-        z (float): Cluster redshift.
-        omega_b (float): Baryon fraction.
-        omega_m (float): Matter fraction.
-        params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift dependence \
-                parameters A, :math:`\\alpha_m`, :math:`\\alpha_z`, \
-                respectively. See BBPS2 Equation 11. Default is BBPS2's \
-                best-fit.
-        params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift dependence, \
-                same as `params_P_0`. Default is BBPS2's \
-                best-fit.
-        params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
-                dependence, same as `params_P_0`. Default is BBPS2's \
-                best-fit.
-
-    Returns:
-        float or array: Integrated line-of-sight pressure at distance `r` from \
-                        the cluster, in units of Msun s^{-2} h^{8/3}.
-    '''
-    r = np.asarray(r, dtype=np.double)
-
-    scalar_input = False
-    if r.ndim == 0:
-        scalar_input = True
-        # Convert r to 2d
-        r = r[None]
-    if r.ndim > 1:
-        raise Exception('r cannot be a >1D array.')
-
-    P_out = np.zeros_like(r, dtype=np.double)
-    P_err_out = np.zeros_like(r, dtype=np.double)
-
-    # Set parameters
-    P_0 = _A_BBPS(M, z, *params_P_0)
-    x_c = _A_BBPS(M, z, *params_x_c)
-    beta = _A_BBPS(M, z, *params_beta)
-
-    rc = _lib.projected_P_BBPS(_dcast(P_out), _dcast(P_err_out),
-                               _dcast(r), len(r),
-                               M, z,
-                               omega_b, omega_m,
-                               P_0, x_c, beta,
-                               alpha, gamma,
-                               delta,
-                               limit,
-                               epsabs, epsrel)
-
-    if rc != 0:
-        msg = 'C_projected_P_BBPS returned error code: {}'.format(rc)
-        raise RuntimeError(msg)
-
-    if scalar_input:
-        if return_errs:
-            return np.squeeze(P_out), np.squeeze(P_err_out)
-        return np.squeeze(P_out)
-    if return_errs:
-        return P_out, P_err_out
-    return P_out
+# Battaglia best fit parameters
+_BBPS_params_P_0 = (18.1, 0.154, -0.758)
+_BBPS_params_x_c = (0.497, -0.00865, 0.731)
+_BBPS_params_beta = (4.35, 0.0393, 0.415)
 
 
 def _rho_crit(z, omega_m):
@@ -219,108 +83,363 @@ def P_delta(M, z, omega_b, omega_m, delta=200):
         (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, delta))
 
 
-def _A_BBPS(M, z, A_0, alpha_m, alpha_z):
+class BBPSProfile:
     '''
-    Mass-Redshift dependency model for the generalized BBPS profile parameters,
-    fit to simulated halos in that data. The best-fit parameters are presented
-    in Table 1. of BBPS2
-    '''
-    return A_0 * (M / 10**14)**alpha_m * (1 + z)**alpha_z
+    The best-fit pressure profile presented in BBPS.
 
+    The 3D pressure profile is computed in :meth:`pressure`, and
+    the projected pressure and Compton y are computed in
+    :meth:`projected_pressure` and :meth:`compton_y`.
 
-def projected_y_BBPS(r, M, z, omega_b, omega_m,
-                     params_P_0=__BBPS_params_P_0,
-                     params_x_c=__BBPS_params_x_c,
-                     params_beta=__BBPS_params_beta,
-                     alpha=1, gamma=-0.3,
-                     delta=200,
-                     Xh=0.76, epsrel=1e-3):
-    '''
-    Projected Compton-y parameter along the line of sight, at a perpendicular
-    distance `r` from a cluster of mass `M` at redshift `z`. All arguments have
-    the same meaning as `projected_P_BBPS`.
+    >>> halo = BBPSProfile(3e14, 0.2, 0.04, 0.28)
+    >>> # Let's compute the pressure profile over a small radial range
+    >>> halo.pressure(np.linspace(0.1, 5, 10))
+    array([9.10170657e-20, 2.87696683e-21, 3.92779676e-22, 9.39464388e-23,
+           3.06798145e-23, 1.22290395e-23, 5.60028834e-24, 2.84086857e-24,
+           1.55884172e-24, 9.10278668e-25])
+    >>> # Now let's do it in absolute units
+    >>> h0 = 0.8
+    >>> h0**(8/3) * halo.pressure(np.linspace(0.1, 5, 10) * h0**(2/3))
+    array([4.41304440e-20, 2.13323485e-21, 3.46223667e-22, 9.09642709e-23,
+           3.15108279e-23, 1.30793006e-23, 6.16910021e-24, 3.20053361e-24,
+           1.78752532e-24, 1.05882458e-24])
 
     Args:
-        r (float or array): Radius from the cluster center, in Mpc.
         M (float): Cluster :math:`M_{\\Delta}`, in Msun.
         z (float): Cluster redshift.
         omega_b (float): Baryon fraction.
         omega_m (float): Matter fraction.
-        Xh (float): Primordial hydrogen mass fraction.
-
-    Returns:
-        float or array: Compton y parameter. Units are :math:`h^{8/3}`, so \
-                        multiply by :math:`h^{8/3}` to obtain the true value.
+        params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift dependence \
+                parameters A, :math:`\\alpha_m`, :math:`\\alpha_z`, \
+                respectively. See BBPS Equation 11. Default is BBPS's \
+                best-fit.
+        params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift dependence, \
+                same as `params_P_0`. Default is BBPS's \
+                best-fit.
+        params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
+                dependence, same as `params_P_0`. Default is BBPS's \
+                best-fit.
+        alpha (float): Profile parameter. See BBPS Eq. 10.
+        gamma (float): Profile parameter. See BBPS Eq. 10.
+        delta (float): Halo overdensity :math:`\\Delta`.
     '''
-    # The constant is \sigma_T / (m_e * c^2), i.e. the Thompson cross-section
-    # divided by the mass-energy of the electron, in units of s^2 Msun^{-1}.
-    # Source: Astropy constants and unit conversions.
-    cy = 1.61574202e+15
-    # We need to convert from GAS pressure to ELECTRON pressure. This is the
-    # equation to do so, see BBPS2 p. 3.
-    ch = (2 * Xh + 2) / (5 * Xh + 3)
-    return ch * cy * projected_P_BBPS(r, M, z, omega_b, omega_m,
-                                      params_P_0=params_P_0,
-                                      params_x_c=params_x_c,
-                                      params_beta=params_beta,
-                                      alpha=alpha, gamma=gamma,
-                                      delta=delta,
-                                      epsrel=epsrel)
+    def __init__(self, M, z,
+                 omega_b, omega_m,
+                 params_P_0=_BBPS_params_P_0,
+                 params_x_c=_BBPS_params_x_c,
+                 params_beta=_BBPS_params_beta,
+                 alpha=1, gamma=-0.3,
+                 delta=200):
+        # Halo definition
+        self.__M = M
+        self.__z = z
+        self.__delta = delta
 
+        # Cosmological info
+        self.__omega_b = omega_b
+        self.__omega_m = omega_m
 
-##################################################
-# The following functions are for testing only!! #
-##################################################
+        # Profile fit parameters
+        self.__params_P_0 = params_P_0
+        self.__params_x_c = params_x_c
+        self.__params_beta = params_beta
+        self.alpha = alpha
+        self.gamma = gamma
 
-def _py_projected_P_BBPS(r, M, z, omega_b, omega_m,
-                         dist=8, epsrel=1e-3):
-    '''
-    Computes the projected line-of-sight density of a cluster at a radius r
-    from the cluster center.
+        # Set parameters
+        self._update_halo()
 
-    Args:
-        r (float): Radius from the cluster center, in Mpc.
-        M (float): Cluster :math:`M_{\\Delta}`, in Msun.
-        z (float): Cluster redshift.
-        omega_b (float): Baryon fraction.
-        omega_m (float): Matter fraction.
+    def update_halo(self, M, z, delta=200):
+        '''
+        Update the mass, redshift, and optionally overdensity of the halo.
 
-    Returns:
-        float: Integrated line-of-sight pressure at distance `r` from the \
-               cluster, in units of Msun s^{-2}.
-    '''
-    R_del = R_delta(M, z, omega_m)
-    return quad(lambda x: P_BBPS(np.sqrt(x*x + r*r), M, z,
-                                 omega_b, omega_m),
-                -dist * R_del, dist * R_del,
-                epsrel=epsrel)[0] / (1 + z)
+        Args:
+            M (float): Halo mass, in :math:`M_{sun}`.
+            z (float): redshift.
+            delta (number): Halo overdensity :math:`\\Delta`.
+        '''
+        self.__M = M
+        self.__z = z
+        self.__delta = delta
+        self._update_halo()
+        return self
 
+    def update_cosmology(self, omega_b, omega_m):
+        '''
+        Update cosmological parameters.
 
-def _projected_P_BBPS_real(r, M, z, omega_b, omega_m, chis, zs,
-                           dist=8, epsrel=1e-3):
-    '''
-    Computes the projected line-of-sight density of a cluster at a radius r
-    from the cluster center.
+        Args:
+            omega_b (float): Baryon fraction.
+            omega_m (float): Mass fraction.
+        '''
+        self.__omega_b = omega_b
+        self.__omega_m = omega_m
+        self._update_halo()
+        return self
 
-    Args:
-        r (float): Radius from the cluster center, in Mpc.
-        M (float): Cluster :math:`M_{\\Delta}`, in Msun.
-        z (float): Cluster redshift.
-        omega_b (float): Baryon fraction.
-        omega_m (float): Matter fraction.
-        chis (1d array of floats): The comoving line-of-sight distance, in Mpc.
-        zs (1d array of floats): The redshifts corresponding to `chis`.
+    def _update_halo(self):
+        self.__R_delta = R_delta(self.M, self.z, self.omega_m, delta=self.delta)
+        self.__P_delta = P_delta(self.M, self.z, self.omega_b, self.omega_m,
+                                 delta=self.delta)
+        self.__P_0 = self._A(self.M, self.z, *self.__params_P_0)
+        self.__x_c = self._A(self.M, self.z, *self.__params_x_c)
+        self.__beta = self._A(self.M, self.z, *self.__params_beta)
 
-    Returns:
-        float: Integrated line-of-sight pressure at distance `r` from the \
-               cluster, in units of Msun s^{-2}.
-    '''
-    R_del = R_delta(M, z, omega_m)
-    chi_cluster = np.interp(z, zs, chis)
-    return quad(lambda x: P_BBPS(np.sqrt((x - chi_cluster)**2 + r*r),
-                                 M, z,
-                                 omega_b, omega_m)
-                / (1 + np.interp(x, chis, zs)),
-                chi_cluster - dist * R_del,
-                chi_cluster + dist * R_del,
-                epsrel=epsrel)[0]
+    @property
+    def M(self):
+        '''
+        Halo mass, in units of :math:`M_{sun}`.
+        '''
+        return self.__M
+
+    @M.setter
+    def set_M(self, M):
+        self.__M = M
+        self._update_halo()
+
+    @property
+    def z(self):
+        '''
+        Halo redshift.
+        '''
+        return self.__z
+
+    @z.setter
+    def set_z(self, z):
+        self.__z = z
+        self._update_halo()
+
+    @property
+    def delta(self):
+        '''
+        Halo overdensity :math:`\\Delta`. Default 200.
+        '''
+        return self.__delta
+
+    @delta.setter
+    def set_delta(self, delta):
+        self.__delta = delta
+        self._update_halo()
+
+    @property
+    def omega_b(self):
+        '''
+        Baryon fraction.
+        '''
+        return self.__omega_b
+
+    @omega_b.setter
+    def set_omega_b(self, omega_b):
+        self.__omega_b = omega_b
+
+    @property
+    def omega_m(self):
+        '''
+        Matter fraction.
+        '''
+        return self.__omega_m
+
+    @omega_m.setter
+    def set_omega_m(self, omega_m):
+        self.__omega_m = omega_m
+        self._update_halo()
+        self._update_halo()
+
+    @property
+    def R_delta(self):
+        '''
+        Virial radius :math:`R_{\\Delta}`, cosmology-dependent.
+        See BBPS equation 6.
+
+        :math:`R_{\\Delta}` cannot be set directly, and is automatically updated
+        whenever the parameters it depends on are.
+
+        Units:
+            :math:`\\text{Mpc} h^\\frac{-2}{3}`.
+        '''
+        return self.__R_delta
+
+    @property
+    def P_delta(self):
+        '''
+        Virial pressure :math:`P_{\\Delta}`, cosmology-dependent.
+        See BBPS section 4.1.
+
+        :math:`P_{\\Delta}` cannot be set directly, and is automatically updated
+        whenever the parameters it depends on are.
+
+        Units:
+            :math:`M_{sun} h^{8/3} s^{-2} \\text{Mpc}^{-1}`
+        '''
+        return self.__P_delta
+
+    @staticmethod
+    def _A(M, z, A_0, alpha_m, alpha_z):
+        '''
+        Mass-Redshift dependency model for the generalized BBPS profile
+        parameters, fit to simulated halos in that data. The best-fit
+        parameters are presented in Table 1. of BBPS
+        '''
+        return A_0 * (M / 10**14)**alpha_m * (1 + z)**alpha_z
+
+    def pressure(self, r):
+        '''
+        The best-fit 3D pressure profile.
+
+        Args:
+            r (float or array): Radii from the cluster center, \
+                                in Mpc :math:`h^{-2/3}`. If an array, an array \
+                                is returned, if a scalar, a scalar is returned.
+
+        Returns:
+            float or array: Pressure at distance `r` from the cluster, in \
+                            units of \ :math:`h^{8/3} Msun s^{-2} Mpc^{-1}`. \
+                            If `r` was an array, an array of the same shape is \
+                            returned.
+        '''
+        r = np.asarray(r, dtype=np.double)
+
+        scalar_input = False
+        if r.ndim == 0:
+            scalar_input = True
+            # Convert r to 2d
+            r = r[None]
+        if r.ndim > 1:
+            raise Exception('r cannot be a >1D array.')
+
+        P_out = np.zeros_like(r, dtype=np.double)
+
+        _lib.P_BBPS(_dcast(P_out),
+                    _dcast(r), len(r),
+                    self.M, self.z,
+                    self.omega_b, self.omega_m,
+                    self.__P_0, self.__x_c, self.__beta,
+                    float(self.alpha), self.gamma,
+                    self.delta)
+
+        if scalar_input:
+            return np.squeeze(P_out)
+        return P_out
+
+    def projected_pressure(self, r, return_errs=False, limit=1000,
+                           epsabs=1e-15, epsrel=1e-3):
+        '''
+        Computes the projected line-of-sight pressure of a cluster at a radius r
+        from the cluster center.
+
+        Args:
+            r (float or array): Radius from the cluster center, in Mpc.
+            return_errs (bool): Whether to return integration errors.
+            limit (int): Number of subdivisions to use for integration \
+                         algorithm.
+            epsabs (float): Absolute allowable error for integration.
+            epsrel (float): Relative allowable error for integration.
+
+        Returns:
+            float or array: Integrated line-of-sight pressure at distance `r` \
+                            from the cluster, in units of Msun s^{-2} h^{8/3}. \
+                            If `return_errs` is set, returns a 2-tuple of \
+                            (values, errors).
+        '''
+        r = np.asarray(r, dtype=np.double)
+
+        scalar_input = False
+        if r.ndim == 0:
+            scalar_input = True
+            # Convert r to 2d
+            r = r[None]
+        if r.ndim > 1:
+            raise Exception('r cannot be a >1D array.')
+
+        P_out = np.zeros_like(r, dtype=np.double)
+        P_err_out = np.zeros_like(r, dtype=np.double)
+
+        rc = _lib.projected_P_BBPS(_dcast(P_out), _dcast(P_err_out),
+                                   _dcast(r), len(r),
+                                   self.M, self.z,
+                                   self.omega_b, self.omega_m,
+                                   self.__P_0, self.__x_c, self.__beta,
+                                   self.alpha, self.gamma,
+                                   self.delta,
+                                   limit,
+                                   epsabs, epsrel)
+
+        if rc != 0:
+            msg = 'C_projected_P_BBPS returned error code: {}'.format(rc)
+            raise RuntimeError(msg)
+
+        if scalar_input:
+            if return_errs:
+                return np.squeeze(P_out), np.squeeze(P_err_out)
+            return np.squeeze(P_out)
+        if return_errs:
+            return P_out, P_err_out
+        return P_out
+
+    def compton_y(self, r, Xh=0.76, limit=1000, epsabs=1e-15, epsrel=1e-3):
+        '''
+        Projected Compton-y parameter along the line of sight, at a set of
+        perpendicular distances `r` from the halo.
+        All arguments have the same meaning as `projected_pressure`.
+
+        Args:
+            r (float or array): Radius from the cluster center, in Mpc.
+
+        Returns:
+            float or array: Compton y parameter. Units are :math:`h^{8/3}`, so \
+                            multiply by :math:`h^{8/3}` to obtain the true \
+                            value.
+        '''
+        # The constant is \sigma_T / (m_e * c^2), the Thompson cross-section
+        # divided by the mass-energy of the electron, in units of s^2 Msun^{-1}.
+        # Source: Astropy constants and unit conversions.
+        cy = 1.61574202e+15
+        # We need to convert from GAS pressure to ELECTRON pressure. This is the
+        # equation to do so, see BBPS p. 3.
+        ch = (2 * Xh + 2) / (5 * Xh + 3)
+        return ch * cy * self.projected_pressure(r, limit=limit,
+                                                 epsabs=epsabs, epsrel=epsrel)
+
+    def _projected_pressure(self, r, dist=8, epsrel=1e-3):
+        '''
+        THIS FUNCTION IS FOR TESTING ONLY.
+
+        Computes the projected line-of-sight density of a cluster at a radius r
+        from the cluster center.
+
+        Args:
+            r (float): Radius from the cluster center, in Mpc.
+
+        Returns:
+            float: Integrated line-of-sight pressure at distance `r` from the \
+                   cluster, in units of Msun s^{-2}.
+        '''
+        R_del = R_delta(self.M, self.z, self.omega_m)
+        return quad(lambda x: self.pressure(np.sqrt(x*x + r*r)),
+                    -dist * R_del, dist * R_del,
+                    epsrel=epsrel)[0] / (1 + self.z)
+
+    def _projected_pressure_real(self, r, chis, zs,
+                                 dist=8, epsrel=1e-3):
+        '''
+        THIS FUNCTION IS FOR TESTING ONLY.
+
+        Computes the projected line-of-sight density of a cluster at a radius r
+        from the cluster center.
+
+        Args:
+            r (float): Radius from the cluster center, in Mpc.
+            chis (1d array of floats): The comoving line-of-sight distance, \
+                                       in Mpc.
+            zs (1d array of floats): The redshifts corresponding to `chis`.
+
+        Returns:
+            float: Integrated line-of-sight pressure at distance `r` from the \
+                   cluster, in units of Msun s^{-2}.
+        '''
+        chi_cluster = np.interp(self.z, zs, chis)
+        return quad(lambda x: self.pressure(np.sqrt((x - chi_cluster)**2 + r*r))
+                    / (1 + np.interp(x, chis, zs)),
+                    chi_cluster - dist * self.R_delta,
+                    chi_cluster + dist * self.R_delta,
+                    epsrel=epsrel)[0]

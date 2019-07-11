@@ -46,16 +46,14 @@ def do_test_projection_approximation(n, epsrel=1e-4):
     (Omega_b, Omega_m, Omega_lambda, h0), z_chis, chis = get_cosmology(n)
     r, M, z = sample_rMz()
 
+    bbps = pp.BBPSProfile(M, z, Omega_b, Omega_m)
+
     # Compute the 'true' value
-    expected = pp._projected_P_BBPS_real(r, M, z,
-                                         Omega_b, Omega_m,
-                                         chis, z_chis,
-                                         epsrel=epsrel*0.01)
+    expected = bbps._projected_pressure_real(r, chis, z_chis,
+                                             epsrel=epsrel*0.01)
 
     # Compute the approximate value
-    actual = pp._py_projected_P_BBPS(r, M, z,
-                                     Omega_b, Omega_m,
-                                     epsrel=epsrel*0.01)
+    actual = bbps._projected_pressure(r, epsrel=epsrel*0.01)
 
     # Check that the relative difference is acceptable
     assert abs((expected - actual) / expected) < epsrel
@@ -106,8 +104,9 @@ def test_pressure():
         # TODO better way to get this?
         row1 = next(bin_.iterrows())[1]
         M200, z = row1.M200, row1.z
+        bbps = pp.BBPSProfile(M200, z, Omega_b, Omega_m)
         for r, P in zip(bin_.r, bin_.P):
-            ourP = pp.P_BBPS(r * h0**(2/3), M200, z, Omega_b, Omega_m)
+            ourP = bbps.pressure(r * h0**(2/3))
             # Convert to dimensionless `y` (see pp.projected_y_BBPS)
             ourP *= 1.61574202e+15
             # Make unitful
@@ -127,8 +126,9 @@ def test_y_projection():
         # TODO better way to get this?
         row1 = next(bin_.iterrows())[1]
         M200, z = row1.M200, row1.z
+        bbps = pp.BBPSProfile(M200, z, Omega_b, Omega_m)
         for r, y in zip(bin_.r, bin_.y):
-            oury = pp.projected_y_BBPS(r * h0**(2/3), M200, z, Omega_b, Omega_m)
+            oury = bbps.compton_y(r * h0**(2/3))
             # Convert to dimensionless `y` (see pp.projected_y_BBPS)
             oury *= h0**(8/3)
             assert abs((oury - y) / y) < 1e-2
