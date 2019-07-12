@@ -15,6 +15,7 @@ projection and the projected Compton-y parameter are computed by
 respectively.
 '''
 
+from astropy.convolution import Gaussian2DKernel, convolve_fft
 from cluster_toolkit import _dcast, _lib
 import numpy as np
 from scipy.integrate import quad
@@ -81,6 +82,43 @@ def P_delta(M, z, omega_b, omega_m, delta=200):
     # (source: astropy's constants module and unit conversions)
     return 4.51710305e-48 * M * delta * _rho_crit(z, omega_m) * \
         (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, delta))
+
+
+def create_image(fn, theta=15, n=200):
+    xs, ys = np.meshgrid(range(n), range(n))
+    midpt = (n - 1) / 2
+    rs = (theta / midpt) * np.sqrt((xs - midpt)**2 + (ys - midpt)**2)
+    y = fn(rs.flatten()).reshape(rs.shape)
+    return rs, y
+
+
+# TODO: should we allow a custom kernel?
+def create_convolved_profile(fn, theta=15, n=200,
+                             sigma=5 / np.sqrt(2 * np.log(2))):
+    '''
+    Convolves the profile `fn` with a gaussian with std == `sigma`, and returns
+    the new 1D profile.
+
+    Args:
+        fn (function): The function to be convolved. Should accept an array. \
+                       Should take a single variable with units of `theta`.
+        theta (float): Half-width of the image. i.e., for a 30 x 30 arcmin \
+                       image centered on radius = 0, use theta = 15. \
+                       (The units are not necessarily arcmin, but whatever the \
+                       argument to `fn` uses.)
+        n (int): The side length of the image, in pixels. The convolution is \
+                 performed on an n x n image.
+        sigma (float): The standard deviation of the Gaussian beam, in the \
+                       same units as `theta`. The default is the Planck beam, \
+                       in arcmin.
+
+    Returns:
+        (array, array): Radii and convolved profile. Each array is size n // 2.
+    '''
+    rs, img = create_image(fn, theta, n)
+    kernel = Gaussian2DKernel(sigma * (n / 2) / theta)
+    convolved = convolve_fft(img, kernel)
+    return np.diag(rs)[n//2:], np.diag(convolved)[n//2:]
 
 
 class BBPSProfile:
@@ -399,6 +437,37 @@ class BBPSProfile:
         ch = (2 * Xh + 2) / (5 * Xh + 3)
         return ch * cy * self.projected_pressure(r, limit=limit,
                                                  epsabs=epsabs, epsrel=epsrel)
+
+    def convolved_y(self, da, theta=15, n=200,
+                    sigma=5 / np.sqrt(2 * np.log(2)),
+                    Xh=0.76, limit=1000,
+                    epsabs=1e-14, epsrel=1e-3):
+        '''
+        Create an observed Compton-y profile of a halo by convolving it with
+        a Gaussian beam function.
+
+        Args:
+            da (float): Angular diameter distance at cluster redshift.
+            theta (float): Half-width of the convolved image, in arcmin.
+            n (int): The side length of the image, in pixels. The convolution \
+                     is performed on an n x n image.
+            sigma (float): The standard deviation of the Gaussian beam, in the \
+                           same units as `theta`. The default is the Planck \
+                           beam, in arcmin.
+            Xh (float): Primordial hydrogen mass fraction.
+
+        Returns:
+            (2-tuple of array): Pair of (rs, smoothed ys). `rs` runs from \
+                                :math:`(theta / (n // 2)) / 2` to \
+                                :math:`\\sqrt(2) theta`, and contains `n` \
+                                points.
+        '''
+        def image_func(thetas):
+            return self.compton_y(thetas * da / 60 * np.pi / 180,
+                                  Xh=Xh, limit=limit,
+                                  epsabs=epsabs, epsrel=epsrel)
+        return create_convolved_profile(image_func,
+                                        theta=theta, n=n, sigma=sigma)
 
     def _projected_pressure(self, r, dist=8, epsrel=1e-3):
         '''
