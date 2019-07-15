@@ -3,7 +3,8 @@
 # Author: Jackson O'Donnell
 #   jacksonhodonnell@gmail.com
 '''
-Galaxy cluster pressure profiles.
+Galaxy cluster pressure profiles. Useful for modeling Sunyaev-Zeldovich cluster
+observables.
 
 This module implements pressure profiles presented by Battaglia et al. 2012
 (https://ui.adsabs.harvard.edu/abs/2012ApJ...758...75B/abstract), referred to
@@ -84,6 +85,10 @@ def P_delta(M, z, omega_b, omega_m, delta=200):
         (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, delta))
 
 
+###############################################
+# Functions for performing Image Convolutions #
+###############################################
+
 def create_image(fn, theta=15, n=200):
     xs, ys = np.meshgrid(range(n), range(n))
     midpt = (n - 1) / 2
@@ -96,8 +101,8 @@ def create_image(fn, theta=15, n=200):
 def create_convolved_profile(fn, theta=15, n=200,
                              sigma=5 / np.sqrt(2 * np.log(2))):
     '''
-    Convolves the profile `fn` with a gaussian with std == `sigma`, and returns
-    the new 1D profile.
+    Convolves the profile `fn` with a gaussian with std == :math`\sigma`, and
+    returns the new 1D profile. We don't recommend using this directly.
 
     Args:
         fn (function): The function to be convolved. Should accept an array. \
@@ -469,6 +474,37 @@ class BBPSProfile:
         return create_convolved_profile(image_func,
                                         theta=theta, n=n, sigma=sigma)
 
+    def fourier_pressure(self, rmax, nr):
+        '''
+        Computes the 3D fourier transform of the BBPS pressure profile.
+        Necessary for computing the 2-halo term. Computed by evaluating the
+        pressure profile at a discrete set of radii, and applying a fast
+        Fourier transform (FFT).
+
+        Args:
+            rmax (float): The maximum R to evaluate the pressure profile at. \
+                          (r = 0..maxR, in nr steps, is used).
+            nr (int): Number of r samples to use in the FFT.
+
+        Returns:
+            (array, array): Two arrays, the `ks` and the Fourier transform \
+                            `P(k)`.
+        '''
+        # the FFT needs an even grid spacing
+        rs = np.linspace(0.0, rmax, nr)
+        Ps = self.pressure(rs)
+
+        # The pressure profile is singular - but since we are multiplying by R,
+        # the P(r = 0) * r should be 0.
+        Ps[0] = 0.0
+
+        fftd = np.fft.fft(rs * Ps)
+        ks = np.fft.fftfreq(nr, rmax / (nr - 1))
+
+        fftd, ks = np.abs(fftd[ks > 0].imag), ks[ks > 0]
+
+        return 2*np.pi*ks, (fftd / ks) * 2 * (rmax / (nr - 1))
+
     def _projected_pressure(self, r, dist=8, epsrel=1e-3):
         '''
         THIS FUNCTION IS FOR TESTING ONLY.
@@ -512,3 +548,69 @@ class BBPSProfile:
                     chi_cluster - dist * self.R_delta,
                     chi_cluster + dist * self.R_delta,
                     epsrel=epsrel)[0]
+
+    def _C_fourier_pressure(self, k,
+                            limit=1000,
+                            epsabs=1e-23,
+                            return_errs=False):
+        '''
+        Computes the 3D fourier transform of the BBPS pressure profile.
+        Necessary for computing the 2-halo term.
+
+        Args:
+            k (float or array): Frequencies to compute FFT at, \
+                                :math:`1/\\text{Mpc}`
+            M (float): Cluster :math:`M_{\\Delta}`, in Msun.
+            z (float): Cluster redshift.
+            omega_b (float): Baryon fraction.
+            omega_m (float): Matter fraction.
+            params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift \
+                    dependence parameters A, :math:`\\alpha_m`, \
+                    :math:`\\alpha_z`, respectively. See BBPS2 Equation 11. \
+                    Default is BBPS2's \ best-fit.
+            params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift \
+                    dependence, same as `params_P_0`. Default is BBPS2's \
+                    best-fit.
+            params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
+                    dependence, same as `params_P_0`. Default is BBPS2's \
+                    best-fit.
+
+        Returns:
+            float or array: The FFT for each `k`.
+        '''
+        k = np.asarray(k, dtype=np.double)
+
+        scalar_input = False
+        if k.ndim == 0:
+            scalar_input = True
+            # Convert r to 2d
+            k = k[None]
+        if k.ndim > 1:
+            raise Exception('r cannot be a >1D array.')
+
+        up_out = np.zeros_like(k, dtype=np.double)
+        up_err_out = np.zeros_like(k, dtype=np.double)
+
+        # Set parameters
+
+        rc = _lib.fourier_P_BBPS(_dcast(up_out), _dcast(up_err_out),
+                                 _dcast(k), len(k),
+                                 self.M, self.z,
+                                 self.omega_b, self.omega_m,
+                                 self.__P_0, self.__x_c, self.__beta,
+                                 self.alpha, self.gamma,
+                                 self.delta,
+                                 limit,
+                                 epsabs)
+
+        if rc != 0:
+            msg = 'C_projected_P_BBPS returned error code: {}'.format(rc)
+            raise RuntimeError(msg)
+
+        if scalar_input:
+            if return_errs:
+                return np.squeeze(up_out), np.squeeze(up_err_out)
+            return np.squeeze(up_out)
+        if return_errs:
+            return up_out, up_err_out
+        return up_out

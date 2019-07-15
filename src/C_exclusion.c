@@ -24,18 +24,18 @@
 
 int xi_hm_exclusion_at_r_arr(double*r, int Nr,
 			    double M, double c, double alpha,
-			    double rt, double beta,
-			    double r_eff, double beta_eff,
-			    double r_A, double r_B, double beta_ex,
+			    double rt, double D,
+			    double r_eff, double D_eff,
+			    double r_A, double r_B, double D_ex,
 			    double bias, double*ximm, int delta,
 			    double Omega_m, double*xihm){
   int i;
   double*xi_1h  = malloc(sizeof(double)*Nr);
   double*xi_2h  = malloc(sizeof(double)*Nr);
   double*xi_C  = malloc(sizeof(double)*Nr);
-  xi_1h_at_r_arr(r, Nr, M, c, alpha, rt, beta, delta, Omega_m, xi_1h);
-  xi_2h_at_r_arr(r, Nr, r_eff, beta_eff, bias, ximm, xi_2h);
-  xi_C_at_r_arr(r, Nr, r_A, r_B, beta_ex, xi_2h, xi_C);
+  xi_1h_at_r_arr(r, Nr, M, c, alpha, rt, D, delta, Omega_m, xi_1h);
+  xi_2h_at_r_arr(r, Nr, r_eff, D_eff, bias, ximm, xi_2h);
+  xi_C_at_r_arr(r, Nr, r_A, r_B, D_ex, xi_2h, xi_C);
   //Resum all terms
   for(i = 0; i < Nr; i++){
     xihm[i] = xi_1h[i] + xi_2h[i] + xi_C[i];
@@ -47,12 +47,12 @@ int xi_hm_exclusion_at_r_arr(double*r, int Nr,
 }
 
 int xi_1h_at_r_arr(double*r, int Nr, double M, double c, double alpha,
-		   double rt, double beta, int delta, double Omega_m,
+		   double rt, double D, int delta, double Omega_m,
 		   double*xi_1h){
   int i;
   double*theta = malloc(sizeof(double)*Nr);
   calc_xi_einasto(r, Nr, M, -1, c, alpha, delta, Omega_m, xi_1h);
-  theta_erfc_at_r_arr(r, Nr, rt, beta, theta);
+  theta_erfc_at_r_arr(r, Nr, rt, D, theta);
   for(i = 0; i < Nr; i++){
     xi_1h[i] = (1+xi_1h[i]) * theta[i];
   }
@@ -60,11 +60,11 @@ int xi_1h_at_r_arr(double*r, int Nr, double M, double c, double alpha,
   return 0; //success
 }
 
-int xi_2h_at_r_arr(double*r, int Nr, double r_eff, double beta_eff,
+int xi_2h_at_r_arr(double*r, int Nr, double r_eff, double D_eff,
 		   double bias, double*ximm, double*xi2h){
   int i;
   double*theta_eff  = malloc(sizeof(double)*Nr);
-  theta_erfc_at_r_arr(r, Nr, r_eff, beta_eff, theta_eff);
+  theta_erfc_at_r_arr(r, Nr, r_eff, D_eff, theta_eff);
   for(i = 0; i < Nr; i++){
     xi2h[i] = (1-theta_eff[i]) * bias * ximm[i];
   }
@@ -72,13 +72,13 @@ int xi_2h_at_r_arr(double*r, int Nr, double r_eff, double beta_eff,
   return 0;
 }
 
-int xi_C_at_r_arr(double*r, int Nr, double r_A, double r_B, double beta_ex,
+int xi_C_at_r_arr(double*r, int Nr, double r_A, double r_B, double D,
 		  double*xi_2h, double*xi_C){
   int i;
   double*theta_A  = malloc(sizeof(double)*Nr);
   double*theta_B  = malloc(sizeof(double)*Nr);
-  theta_erfc_at_r_arr(r, Nr, r_A, beta_ex, theta_A);
-  theta_erfc_at_r_arr(r, Nr, r_B, beta_ex, theta_B);
+  theta_erfc_at_r_arr(r, Nr, r_A, D, theta_A);
+  theta_erfc_at_r_arr(r, Nr, r_B, D, theta_B);
   for(i = 0; i < Nr; i++){
     xi_C[i] = -theta_A[i] * xi_2h[i] - theta_B[i];
   }
@@ -92,12 +92,12 @@ int xi_C_at_r_arr(double*r, int Nr, double r_A, double r_B, double beta_ex,
 //Support functions for the correction term//
 /////////////////////////////////////////////
 
-int theta_erfc_at_r_arr(double*r, int Nr, double rt, double beta,
+int theta_erfc_at_r_arr(double*r, int Nr, double rt, double D,
 			double*theta){
   int i;
-  double invbeta_rt = 1./(beta*rt);
+  double invD_rt = 1./(D*rt);
   for(i = 0; i < Nr; i++){
-    theta[i] = 0.5*gsl_sf_erfc((r[i]-rt) * invbeta_rt * invsqrt2);
+    theta[i] = 0.5*gsl_sf_erfc((r[i]-rt) * invD_rt * invsqrt2);
   }
   return 0;
 }

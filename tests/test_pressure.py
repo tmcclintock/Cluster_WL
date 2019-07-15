@@ -1,10 +1,13 @@
 from cluster_toolkit import pressure as pp
+from itertools import product
 import math
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
 import pytest
 import random
+from scipy.interpolate import interp1d
 
 
 def get_cosmology(n):
@@ -16,7 +19,8 @@ def get_cosmology(n):
     # Load in table of comoving dist vs. redshift
     z_chis = np.loadtxt(os.path.join(dir_, 'distances/z.txt'))
     chis = np.loadtxt(os.path.join(dir_, 'distances/d_m.txt'))
-    # Load in parameters Omega_b, Omega_m, Omega_lambda
+    d_a = np.loadtxt(os.path.join(dir_, 'distances/d_a.txt'))
+    # Load in parameters Omega_b, Omega_m
     with open(os.path.join(dir_, 'cosmological_parameters/values.txt')) as f:
         for line in f.readlines():
             name, val = line.split(' = ')
@@ -24,11 +28,9 @@ def get_cosmology(n):
                 omega_b = float(val)
             if name == 'omega_m':
                 omega_m = float(val)
-            if name == 'omega_lambda':
-                omega_lambda = float(val)
             if name == 'h0':
                 h0 = float(val)
-    return (omega_b, omega_m, omega_lambda, h0), z_chis, chis
+    return (omega_b, omega_m, h0), z_chis, chis, d_a
 
 
 def sample_rMz():
@@ -43,7 +45,7 @@ def sample_rMz():
 
 
 def do_test_projection_approximation(n, epsrel=1e-4):
-    (Omega_b, Omega_m, Omega_lambda, h0), z_chis, chis = get_cosmology(n)
+    (Omega_b, Omega_m, h0), z_chis, chis, d_as = get_cosmology(n)
     r, M, z = sample_rMz()
 
     bbps = pp.BBPSProfile(M, z, Omega_b, Omega_m)
@@ -95,7 +97,7 @@ def test_projection_approximation_6():
 
 
 def test_pressure():
-    (Omega_b, Omega_m, Omega_lambda, h0), z_chis, chis = get_cosmology(0)
+    (Omega_b, Omega_m, h0), z_chis, chis, d_as = get_cosmology(0)
     profiles = pd.read_csv(os.path.join(os.path.dirname(__file__),
                                         'data_for_testing/y_profiles.csv'))
     for ibin in profiles.ibin.unique():
@@ -118,7 +120,7 @@ def test_pressure():
 
 @pytest.mark.skip(reason='fiducial table used different integration method')
 def test_y_projection():
-    (Omega_b, Omega_m, Omega_lambda, h0), z_chis, chis = get_cosmology(0)
+    (Omega_b, Omega_m, h0), z_chis, chis, d_as = get_cosmology(0)
     profiles = pd.read_csv(os.path.join(os.path.dirname(__file__),
                                         'data_for_testing/y_profiles.csv'))
     for ibin in profiles.ibin.unique():
@@ -132,4 +134,45 @@ def test_y_projection():
             # Convert to dimensionless `y` (see pp.projected_y_BBPS)
             oury *= h0**(8/3)
             assert abs((oury - y) / y) < 1e-2
-            # TODO check projected
+
+
+def test_fourier():
+    (Omega_b, Omega_m, h0), z_chis, chis, d_as = get_cosmology(0)
+    Ms = [2e13, 5e14, 5e14, 2e15]
+    zs = [0.1, 0.2, 0.3]
+    # Units: Mpc
+    rmin, nr = 20, 500
+    for m, z in product(Ms, zs):
+        halo = pp.BBPSProfile(m, z, Omega_b, Omega_m)
+        # Compare both Python and C versions of the Fourier transform
+        ks, ps = halo.fourier_pressure(rmin, nr)
+        ps_C = halo._C_fourier_pressure(ks)
+        msk = ks < 10
+        assert np.all(np.abs((ps[msk] - ps_C[msk]) / ps[msk]) < 1e-2)
+
+
+@pytest.mark.skip()
+def test_convolution_convergence():
+    (Omega_b, Omega_m, h0), z_chis, chis, d_as = get_cosmology(0)
+    ns = (800, 400, 200, 100, 50, 25)
+    Ms = [1e13, 4e13, 8e13, 2e14, 6e14, 1e15]
+    zs = [0.2]
+    da_interp = interp1d(z_chis, d_as)
+    for (M, z) in zip(Ms, zs):
+        halo = pp.BBPSProfile(M, z, Omega_b, Omega_m)
+        convolved = [halo.convolved_y(da=da_interp(z), n=n) for n in ns]
+        fig, axs = plt.subplots(nrows=2, figsize=(8, 6), sharex=True,
+                                gridspec_kw={'height_ratios':[2, 1]})
+        # Plot first
+        axs[0].loglog()
+        for i, (rs, vals) in enumerate(convolved):
+            axs[0].plot(rs, vals, label='n = {}'.format(ns[i]))
+        axs[0].legend()
+
+        fid = interp1d(convolved[0][0], convolved[0][1], bounds_error=False)
+        for i, (rs, vals) in enumerate(convolved):
+            exp = fid(rs)
+            axs[1].plot(rs, (vals - exp) / exp, label='n = {}'.format(ns[i]))
+        axs[1].set_ylim((-0.02, 0.02))
+
+    plt.show()
