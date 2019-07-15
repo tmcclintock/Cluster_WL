@@ -3,15 +3,23 @@
 # Author: Jackson O'Donnell
 #   jacksonhodonnell@gmail.com
 '''
-Galaxy cluster pressure profiles.
+Galaxy cluster pressure profiles. Useful for modeling Sunyaev-Zeldovich cluster
+observables.
 
 This module implements pressure profiles presented by Battaglia et al. 2012
 (https://ui.adsabs.harvard.edu/abs/2012ApJ...758...75B/abstract), referred to
 as BBPS.
 
 Their best-fit 3D pressure profile is implemented in the function
-`P_BBPS`, and projected profiles are implemented in `projected_P_BBPS` and
-`projected_y_BBPS`.
+:meth:`P_BBPS`, and projected profiles are implemented in
+:meth:`projected_P_BBPS` and :meth:`projected_y_BBPS`.
+
+The most important functions are:
+
+* :meth:`P_BBPS` computes the 3D pressure profile.
+* :meth:`projected_y_BBPS` computes the projected Compton-y parameter.
+* :meth:`convolved_y_BBPS` computes the observed Compton-y parameter, i.e. the \
+  projected Compton-y convolved with a Gaussian beam function.
 '''
 
 from astropy.convolution import Gaussian2DKernel, convolve_fft
@@ -23,6 +31,64 @@ from scipy.integrate import quad
 __BBPS_params_P_0 = (18.1, 0.154, -0.758)
 __BBPS_params_x_c = (0.497, -0.00865, 0.731)
 __BBPS_params_beta = (4.35, 0.0393, 0.415)
+
+
+def _rho_crit(z, omega_m):
+    '''
+    The critical density of the universe :math:`\\rho_{crit}`, in units of
+    :math:`Msun*Mpc^{-3}*h^2`.
+    '''
+    # The below formula assumes a flat univers, i.e. omega_m + omega_lambda = 1
+    omega_lambda = 1 - omega_m
+    # The constant is 3 * (100 km / s / Mpc)**2 / (8 * pi * G)
+    # in units of Msun h^2 Mpc^{-3}
+    # (source: astropy's constants module and unit conversions)
+    return 2.77536627e+11 * (omega_m * (1 + z)**3 + omega_lambda)
+
+
+def R_delta(M, z, omega_m, delta=200):
+    '''
+    The radius of a sphere of mass M (in Msun), which has a density `delta`
+    times the critical density of the universe.
+
+    :math:`R_{\\Delta} = \\Big(\\frac{3 M_{\\Delta}} \
+                                     {8 \\pi \\Delta \\rho_{crit}}\Big)^{1/3}`
+
+    Args:
+        M (float or array): Halo mass :math:`M_{\\Delta}`, in units of Msun.
+        z (float or array): Redshift to the cluster center.
+        omega_m (float or array): The matter fraction :math:`\\Omega_m`.
+        delta (float or array): The halo overdensity :math:`\\Delta`.
+
+    Returns:
+        float or array: Radius, in :math:`\\text{Mpc} h^\\frac{-2}{3}`.
+    '''
+    volume = M / (delta * _rho_crit(z, omega_m))
+    return (3 * volume / (4 * np.pi))**(1./3)
+
+
+def P_delta(M, z, omega_b, omega_m, delta=200):
+    '''
+    The pressure amplitude of a halo:
+
+    :math:`P_{\\Delta} = G * M_{\\Delta} * \\Delta * \\rho_{crit}(z) \
+                * \\Omega_b / \\Omega_m / (2R_{\\Delta})`
+
+    See BBPS, section 4.1 for details.
+
+    Args:
+        M (float): Halo mass :math:`M_{\\Delta}`, in units of Msun.
+        omega_b (float): The baryon fraction :math:`\\Omega_b`.
+        omega_m (float): The matter fraction :math:`\\Omega_m`.
+        delta (float): The halo overdensity :math:`\\Delta`.
+
+    Returns:
+        float: Pressure amplitude, in units of Msun h^{8/3} s^{-2} Mpc^{-1}.
+    '''
+    # G = 4.51710305e-48 Mpc^3 Msun^{-1} s^{-2}
+    # (source: astropy's constants module and unit conversions)
+    return 4.51710305e-48 * M * delta * _rho_crit(z, omega_m) * \
+        (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, delta))
 
 
 def P_BBPS(r, M, z, omega_b, omega_m,
@@ -162,62 +228,131 @@ def projected_P_BBPS(r, M, z, omega_b, omega_m,
     return P_out
 
 
-def _rho_crit(z, omega_m):
+def fourier_P_BBPS(rmax, nr, M, z, omega_b, omega_m,
+                   params_P_0=__BBPS_params_P_0,
+                   params_x_c=__BBPS_params_x_c,
+                   params_beta=__BBPS_params_beta,
+                   alpha=1, gamma=-0.3,
+                   delta=200):
     '''
-    The critical density of the universe :math:`\\rho_{crit}`, in units of
-    :math:`Msun*Mpc^{-3}*h^2`.
-    '''
-    # The below formula assumes a flat univers, i.e. omega_m + omega_lambda = 1
-    omega_lambda = 1 - omega_m
-    # The constant is 3 * (100 km / s / Mpc)**2 / (8 * pi * G)
-    # in units of Msun h^2 Mpc^{-3}
-    # (source: astropy's constants module and unit conversions)
-    return 2.77536627e+11 * (omega_m * (1 + z)**3 + omega_lambda)
-
-
-def R_delta(M, z, omega_m, delta=200):
-    '''
-    The radius of a sphere of mass M (in Msun), which has a density `delta`
-    times the critical density of the universe.
-
-    :math:`R_{\\Delta} = \\Big(\\frac{3 M_{\\Delta}} \
-                                     {8 \\pi \\Delta \\rho_{crit}}\Big)^{1/3}`
+    Computes the 3D fourier transform of the BBPS pressure profile. Necessary
+    for computing the 2-halo term. Computed by evaluating the pressure profile
+    at a discrete set of radii, and applying a fast Fourier transform (FFT).
 
     Args:
-        M (float or array): Halo mass :math:`M_{\\Delta}`, in units of Msun.
-        z (float or array): Redshift to the cluster center.
-        omega_m (float or array): The matter fraction :math:`\\Omega_m`.
-        delta (float or array): The halo overdensity :math:`\\Delta`.
+        rmax (float): The maximum R to evaluate the pressure profile at. \
+                      (r = 0..maxR, in nr steps, is used).
+        nr (int): Number of r samples to use in the FFT.
+        M (float): Cluster :math:`M_{\\Delta}`, in Msun.
+        z (float): Cluster redshift.
+        omega_b (float): Baryon fraction.
+        omega_m (float): Matter fraction.
+        params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift dependence \
+                parameters A, :math:`\\alpha_m`, :math:`\\alpha_z`, \
+                respectively. See BBPS2 Equation 11. Default is BBPS2's \
+                best-fit.
+        params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift dependence, \
+                same as `params_P_0`. Default is BBPS2's \
+                best-fit.
+        params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
+                dependence, same as `params_P_0`. Default is BBPS2's \
+                best-fit.
 
     Returns:
-        float or array: Radius, in :math:`\\text{Mpc} h^\\frac{-2}{3}`.
+        float or array: The FFT for each `k`.
     '''
-    volume = M / (delta * _rho_crit(z, omega_m))
-    return (3 * volume / (4 * np.pi))**(1./3)
+    # the FFT needs an even grid spacing
+    rs = np.linspace(0.0, rmax, nr)
+    Ps = P_BBPS(rs, M, z, omega_b, omega_m,
+                params_P_0=params_P_0,
+                params_x_c=params_x_c,
+                params_beta=params_beta,
+                alpha=alpha, gamma=gamma,
+                delta=delta)
+    # The pressure profile is singular - but since we are multiplying by R,
+    # the P(r = 0) * r should be 0.
+    Ps[0] = 0.0
+
+    fftd = np.fft.fft(rs * Ps)
+    ks = np.fft.fftfreq(nr, rmax / (nr - 1))
+
+    fftd, ks = np.abs(fftd[ks > 0].imag), ks[ks > 0]
+
+    return 2*np.pi*ks, (fftd / ks) * 2 * (rmax / (nr - 1))
 
 
-def P_delta(M, z, omega_b, omega_m, delta=200):
+def _C_fourier_P_BBPS(k, M, z, omega_b, omega_m,
+                      params_P_0=__BBPS_params_P_0,
+                      params_x_c=__BBPS_params_x_c,
+                      params_beta=__BBPS_params_beta,
+                      alpha=1, gamma=-0.3,
+                      delta=200,
+                      limit=1000,
+                      epsabs=1e-23,
+                      return_errs=False):
     '''
-    The pressure amplitude of a halo:
-
-    :math:`P_{\\Delta} = G * M_{\\Delta} * \\Delta * \\rho_{crit}(z) \
-                * \\Omega_b / \\Omega_m / (2R_{\\Delta})`
-
-    See BBPS, section 4.1 for details.
+    Computes the 3D fourier transform of the BBPS pressure profile. Necessary
+    for computing the 2-halo term.
 
     Args:
-        M (float): Halo mass :math:`M_{\\Delta}`, in units of Msun.
-        omega_b (float): The baryon fraction :math:`\\Omega_b`.
-        omega_m (float): The matter fraction :math:`\\Omega_m`.
-        delta (float): The halo overdensity :math:`\\Delta`.
+        k (float or array): Frequencies to compute FFT at, :math:`1/\\text{Mpc}`
+        M (float): Cluster :math:`M_{\\Delta}`, in Msun.
+        z (float): Cluster redshift.
+        omega_b (float): Baryon fraction.
+        omega_m (float): Matter fraction.
+        params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift dependence \
+                parameters A, :math:`\\alpha_m`, :math:`\\alpha_z`, \
+                respectively. See BBPS2 Equation 11. Default is BBPS2's \
+                best-fit.
+        params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift dependence, \
+                same as `params_P_0`. Default is BBPS2's \
+                best-fit.
+        params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
+                dependence, same as `params_P_0`. Default is BBPS2's \
+                best-fit.
 
     Returns:
-        float: Pressure amplitude, in units of Msun h^{8/3} s^{-2} Mpc^{-1}.
+        float or array: The FFT for each `k`.
     '''
-    # G = 4.51710305e-48 Mpc^3 Msun^{-1} s^{-2}
-    # (source: astropy's constants module and unit conversions)
-    return 4.51710305e-48 * M * delta * _rho_crit(z, omega_m) * \
-        (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, delta))
+    k = np.asarray(k, dtype=np.double)
+
+    scalar_input = False
+    if k.ndim == 0:
+        scalar_input = True
+        # Convert r to 2d
+        k = k[None]
+    if k.ndim > 1:
+        raise Exception('r cannot be a >1D array.')
+
+    up_out = np.zeros_like(k, dtype=np.double)
+    up_err_out = np.zeros_like(k, dtype=np.double)
+
+    # Set parameters
+    P_0 = _A_BBPS(M, z, *params_P_0)
+    x_c = _A_BBPS(M, z, *params_x_c)
+    beta = _A_BBPS(M, z, *params_beta)
+
+    rc = _lib.fourier_P_BBPS(_dcast(up_out), _dcast(up_err_out),
+                             _dcast(k), len(k),
+                             M, z,
+                             omega_b, omega_m,
+                             P_0, x_c, beta,
+                             alpha, gamma,
+                             delta,
+                             limit,
+                             epsabs)
+
+    if rc != 0:
+        msg = 'C_projected_P_BBPS returned error code: {}'.format(rc)
+        raise RuntimeError(msg)
+
+    if scalar_input:
+        if return_errs:
+            return np.squeeze(up_out), np.squeeze(up_err_out)
+        return np.squeeze(up_out)
+    if return_errs:
+        return up_out, up_err_out
+    return up_out
 
 
 def _A_BBPS(M, z, A_0, alpha_m, alpha_z):
@@ -269,6 +404,11 @@ def projected_y_BBPS(r, M, z, omega_b, omega_m,
                                       epsrel=epsrel)
 
 
+###############################################
+# Functions for performing Image Convolutions #
+###############################################
+
+
 def create_image(fn, theta=15, n=200):
     xs, ys = np.meshgrid(range(n), range(n))
     midpt = (n - 1) / 2
@@ -280,8 +420,8 @@ def create_image(fn, theta=15, n=200):
 def create_convolved_profile(fn, theta=15, n=200,
                              sigma=5 / np.sqrt(2 * np.log(2))):
     '''
-    Convolves the profile `fn` with a gaussian with std == `sigma`, and returns
-    the new 1D profile.
+    Convolves the profile `fn` with a gaussian with std == :math`\sigma`, and
+    returns the new 1D profile. We don't recommend using this directly.
 
     Args:
         fn (function): The function to be convolved. Should accept an array. \
