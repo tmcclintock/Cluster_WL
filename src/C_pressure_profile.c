@@ -1,5 +1,6 @@
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_integration.h>
+#include <gsl/gsl_interp.h>
 #include <math.h>
 
 // G in Mpc^3 Msun^{-1} s^{-2}
@@ -16,6 +17,13 @@
 // in units of Msun h^2 Mpc^{-3}
 // (source: astropy's constants module and unit conversions) 
 #define RHO_CRIT (2.77536627e+11)
+
+
+static int
+spherical_fourier_transform(double *out, double *out_err,
+                            const double *ks, unsigned Nk,
+                            gsl_function *f_r,
+                            unsigned limit, double epsabs);
 
 // Computes the critical density of the universe, in units of
 // RHO_CRIT. Assumes a flat (omega_k == 0) universe.
@@ -89,7 +97,7 @@ projected_P_BBPS(double *P_out, double *P_err_out,
     gsl_set_error_handler_off();
     gsl_integration_workspace *wkspc = gsl_integration_workspace_alloc(limit);
     if (!wkspc)
-        return GSL_FAILURE;
+        return GSL_ENOMEM;
 
     double
     integrand(double chi, void *params)
@@ -145,7 +153,115 @@ fourier_P_BBPS(double *up_out, double *up_err_out,
                double alpha, double gamma, double delta,
                unsigned limit, double epsabs)
 {
-    if ((up_out == NULL) || (ks == NULL))
+    double
+    integrand(double r, void *params)
+    {
+        double P = 0.0;
+        P_BBPS(&P, &r, 1,
+               M_delta, z,
+               omega_b, omega_m,
+               P_0, x_c, beta,
+               alpha, gamma,
+               delta);
+        return P;
+    }
+
+    gsl_function f_r;
+    f_r.params = NULL;
+    f_r.function = integrand;
+
+    int rc = spherical_fourier_transform(up_out, up_err_out, ks, Nk,
+                                         &f_r,
+                                         limit, epsabs / (4 * M_PI));
+
+    if (rc != GSL_SUCCESS)
+        return rc;
+
+    // Apply normalization for forward Fourier transform
+    // (See comment above spherical_fourier_transform)
+    for (unsigned i = 0; i < Nk; i++) {
+        up_out[i] *= 4 * M_PI;
+        if (up_err_out)
+            up_err_out[i] *= 4 * M_PI;
+    }
+
+    return rc;
+}
+
+
+/// Performs an inverse fourier-transform on the function specified in
+int
+inv_spherical_fourier_transform(double *out, double *out_err,
+                                const double *rs, unsigned Nr,
+                                const double *ks, const double *Fs, unsigned Nk,
+                                unsigned limit, double epsabs)
+{
+    gsl_interp *F_interp = gsl_interp_alloc(gsl_interp_linear, Nk);
+    if (!F_interp)
+        return GSL_ENOMEM;
+
+    int rc = gsl_interp_init(F_interp, ks, Fs, Nk);
+    if (rc != GSL_SUCCESS)
+        return rc;
+
+    double
+    integrand(double k, void *params)
+    {
+        double F = 0.0;
+        int retcode = gsl_interp_eval_e(F_interp, ks, Fs, k, NULL, &F);
+        // TODO - if we are out of the interpolation range, we return 0.
+        // Is this the right thing to do? We should try other methods and see
+        // the effects
+        if (retcode == GSL_EDOM)
+            return 0.0;
+        return F;
+    }
+
+    gsl_function f_k;
+    f_k.params = NULL;
+    f_k.function = integrand;
+
+    rc = spherical_fourier_transform(out, out_err,
+                                     rs, Nr,
+                                     &f_k,
+                                     limit, epsabs * 2 * M_PI * M_PI);
+
+    if (rc == GSL_SUCCESS) {
+        // Apply normalization for reverse Fourier transform
+        // (See comment above spherical_fourier_transform)
+        for (unsigned i = 0; i < Nr; i++) {
+            out[i] /= 2 * M_PI * M_PI;
+            if (out_err)
+                out_err[i] /= 2 * M_PI * M_PI;
+        }
+    }
+
+    gsl_interp_free(F_interp);
+    return rc;
+}
+
+
+/// Computes the Fourier transform of a spherically symmetric distribution by:
+///
+/// F(k) = \int_0^\infty dr 4pi r^2 j_0(kr) f(r)
+///      = \int_0^\infty dr 4pi r^2 (sin(kr)/kr) f(r)
+///      = 4pi / k \int_0^\infty dr r sin(kr) f(r)
+///
+/// With no normalization factor (so, to compute F(k), multiply by 4pi). The
+/// inverse of this is:
+///
+/// f(r) = \int_0^\infty dk/(2pi^2) k^2 j_0(kr) F(k)
+///      = \int_0^\infty dk/(2pi^2) k^2 (sin(kr)/kr) F(k)
+///      = 1 / (2 pi^2 r) \int_0^\infty dk k sin(kr) F(k)
+///
+/// So, to compute f(r) from F(k), use this function then divide by 2 pi^2.
+static int
+spherical_fourier_transform(double *out, double *out_err,
+                            const double *ks, unsigned Nk,
+                            gsl_function *f_r,
+                            unsigned limit, double epsabs)
+{
+    if ((out == NULL) || (ks == NULL))
         return GSL_FAILURE;
 
     gsl_set_error_handler_off();
@@ -157,23 +273,17 @@ fourier_P_BBPS(double *up_out, double *up_err_out,
 
     // L is ignored by the function `gsl_integration_qawf`. So make it 1 full cycle for now.
     gsl_integration_qawo_table *tbl =
-        gsl_integration_qawo_table_alloc(ks[0], M_2_PI / ks[0], GSL_INTEG_SINE, limit);
+        gsl_integration_qawo_table_alloc(ks[0], 2 * M_PI / ks[0], GSL_INTEG_SINE, limit);
     if (!wkspc || !cycle || !tbl)
-        return GSL_FAILURE;
+        return GSL_ENOMEM;
 
+    // Our integrand is (f(r) * r / k)
     double
     integrand(double r, void *params)
     {
         const double k = *((const double *) params);
-        double P = 0.0;
-        P_BBPS(&P,
-               &r, 1,
-               M_delta, z,
-               omega_b, omega_m,
-               P_0, x_c, beta,
-               alpha, gamma,
-               delta);
-        return P * 4 * M_PI * (r / k);
+        const double f = GSL_FN_EVAL(f_r, r);
+        return f * r / k;
     }
 
     gsl_function fn;
@@ -188,7 +298,7 @@ fourier_P_BBPS(double *up_out, double *up_err_out,
 
         // Update table for new iteration speed `k`. Again, L is ignored, so we
         // make it 1 full cycle for simplicity.
-        retcode = gsl_integration_qawo_table_set(tbl, this_k, M_2_PI / this_k, GSL_INTEG_SINE);
+        retcode = gsl_integration_qawo_table_set(tbl, this_k, 2 * M_PI / this_k, GSL_INTEG_SINE);
         if (retcode != GSL_SUCCESS)
             break;
 
@@ -207,12 +317,14 @@ fourier_P_BBPS(double *up_out, double *up_err_out,
         if (retcode != GSL_SUCCESS)
             break;
 
-        up_out[i] = result;
-        if (up_err_out)
-            up_err_out[i] = err;
+        out[i] = result;
+        if (out_err)
+            out_err[i] = err;
     }
 
+    // Clean up
     gsl_integration_qawo_table_free(tbl);
+    gsl_integration_workspace_free(cycle);
     gsl_integration_workspace_free(wkspc);
     return retcode;
 }

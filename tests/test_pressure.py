@@ -151,6 +151,30 @@ def test_fourier():
         assert np.all(np.abs((ps[msk] - ps_C[msk]) / ps[msk]) < 1e-2)
 
 
+def test_inverse_fourier():
+    # Create our test halo
+    M, z = 1e14, 0.2
+    Omega_b, Omega_m = 0.04, 0.28
+    halo = pp.BBPSProfile(M, z, Omega_b, Omega_m)
+
+    # Create our real and Fourier space evaluation grids
+    rs = np.exp(np.linspace(np.log(0.01), np.log(15), 100))
+    ks = np.exp(np.linspace(np.log(0.01), np.log(1000), 1000))
+
+    true_pressure = halo.pressure(rs)
+
+    # Convert the pressure profile to Fourier space, and back again
+    Fs = halo._C_fourier_pressure(ks)
+    epsabs = halo.pressure(halo.R_delta * 2)
+    ifft_pressure = pp.inv_spherical_fourier_transform(rs, ks, Fs,
+                                                       epsabs=epsabs)
+
+    # Check that the answer is right
+    diff = np.abs(true_pressure - ifft_pressure)
+    passes = ((diff / true_pressure) < 1e-1) | (diff < epsabs)
+    assert np.all(passes)
+
+
 @pytest.mark.skip()
 def test_convolution_convergence():
     (Omega_b, Omega_m, h0), z_chis, chis, d_as = get_cosmology(0)

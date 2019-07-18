@@ -85,6 +85,72 @@ def P_delta(M, z, omega_b, omega_m, delta=200):
         (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, delta))
 
 
+def inv_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
+                                    return_errs=False):
+    '''
+    Inverse spherical fourier transform of a spectrum F(k), evaluated at a grid
+    of radius values r. The spectrum F(k) is given at discrete points and
+    interpolated.
+
+    :math:`f(r) = \\frac{1}{2 \\pi^2 r} \\int_0^\\infty dk sin(kr) k F(k)`
+
+    Note:
+        The above integral over :math:`k` is done using a GSL integration
+        routine. This means, however, that if the integrand is not
+        well-behaved (i.e. Fs = 0 except at a single `k` value, or if `F` is
+        singular) the integration routine may not locate the singularity, or it
+        may not converge.
+
+    Args:
+        rs (array): The radii at which to compute the inverse Fourier transform.
+        ks (array): Grid of angular frequencies `k` that the spectrum `F(k)` is
+                    evaluated at.
+        Fs (array): The spectrum `F(k)`, used for interpolation. Must be of
+                    the same size as `ks`.
+        limit (int): Number of subdivisions to use for integration
+                     algorithm.
+        epsabs (float): Absolute allowable error for integration.
+
+    Returns:
+        (array): The inverse-Fourier transformed profile `f(r)`. The same \
+                 shape as `rs`.
+    '''
+    rs = np.asarray(rs, dtype=np.double)
+    ks = np.asarray(ks, dtype=np.double)
+    Fs = np.asarray(Fs, dtype=np.double)
+
+    if ks.shape != Fs.shape:
+        raise ValueError('ks and Fs must be the same shape')
+
+    scalar_input = False
+    if rs.ndim == 0:
+        scalar_input = True
+        # Convert r to 2d
+        rs = rs[None]
+    if rs.ndim > 1:
+        raise Exception('rs cannot be a >1D array.')
+
+    f_out = np.zeros_like(rs, dtype=np.double)
+    f_err_out = np.zeros_like(rs, dtype=np.double)
+
+    rc = _lib.inv_spherical_fourier_transform(_dcast(f_out), _dcast(f_err_out),
+                                              _dcast(rs), len(rs),
+                                              _dcast(ks), _dcast(Fs), len(Fs),
+                                              limit, epsabs)
+
+    if rc != 0:
+        msg = 'inv_spherical_fourier_transform returned error code: {}'
+        raise RuntimeError(msg.format(rc))
+
+    if scalar_input:
+        if return_errs:
+            return np.squeeze(f_out), np.squeeze(f_err_out)
+        return np.squeeze(f_out)
+    if return_errs:
+        return f_out, f_err_out
+    return f_out
+
+
 ###############################################
 # Functions for performing Image Convolutions #
 ###############################################
@@ -498,10 +564,11 @@ class BBPSProfile:
         # the P(r = 0) * r should be 0.
         Ps[0] = 0.0
 
-        fftd = np.fft.fft(rs * Ps)
+        fftd = np.fft.rfft(rs * Ps)
         ks = np.fft.fftfreq(nr, rmax / (nr - 1))
 
-        fftd, ks = np.abs(fftd[ks > 0].imag), ks[ks > 0]
+        # We only need the `sin()` (i.e. imaginary) terms
+        fftd, ks = np.abs(fftd[1:-1].imag), ks[ks > 0]
 
         return 2*np.pi*ks, (fftd / ks) * 2 * (rmax / (nr - 1))
 
