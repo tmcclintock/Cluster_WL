@@ -151,6 +151,25 @@ def inv_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
     return f_out
 
 
+def integrate_spline(xs, ys, a, b):
+    xs = np.asarray(xs, dtype=np.double)
+    ys = np.asarray(ys, dtype=np.double)
+
+    if xs.shape != ys.shape:
+        raise ValueError('integrate_spline: xs and ys must be same shape')
+
+    # Create a one-element array for the result
+    f_out = np.array(0.0, dtype=np.double)
+
+    rc = _lib.integrate_spline(_dcast(xs), _dcast(ys), len(xs),
+                               a, b, _dcast(f_out))
+
+    if rc != 0:
+        msg = 'inv_spherical_fourier_transform returned error code: {}'
+        raise RuntimeError(msg.format(rc))
+    return f_out[()]
+
+
 ###############################################
 # Functions for performing Image Convolutions #
 ###############################################

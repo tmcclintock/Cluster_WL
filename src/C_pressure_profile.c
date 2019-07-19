@@ -328,3 +328,19 @@ spherical_fourier_transform(double *out, double *out_err,
     gsl_integration_workspace_free(wkspc);
     return retcode;
 }
+
+int
+integrate_spline(const double *xs, const double *ys, unsigned Ny,
+                 double a, double b,
+                 double *result)
+{
+    gsl_interp *F_interp = gsl_interp_alloc(gsl_interp_cspline, Ny);
+    if (!F_interp)
+        return GSL_ENOMEM;
+
+    int rc = gsl_interp_init(F_interp, xs, ys, Ny);
+    if (rc != GSL_SUCCESS)
+        return rc;
+
+    return gsl_interp_eval_integ_e(F_interp, xs, ys, a, b, NULL, result);
+}

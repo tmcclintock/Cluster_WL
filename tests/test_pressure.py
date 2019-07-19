@@ -175,6 +175,36 @@ def test_inverse_fourier():
     assert np.all(passes)
 
 
+def test_spline_integration():
+    xs = np.arange(0.5, 10, 0.5)
+
+    # Test a simple quadratic
+    ys = xs**2 - 3 * xs
+    for a, b in [(1, 2), (2, 3), (3, 5), (2, 9.3), (0.7, 8.5)]:
+        res = pp.integrate_spline(xs, ys, a, b)
+        truth = (b**3 / 3 - 3 * b**2 / 2) - (a**3 / 3 - 3 * a**2 / 2)
+        assert (abs(res - truth) / truth) < 1e-4
+
+        # Test integrating over log
+        res = pp.integrate_spline(np.log(xs), xs*ys, np.log(a), np.log(b))
+        assert (abs(res - truth) / truth) < 1e-4
+
+    # Test a simple cubic
+    ys = xs**3 - xs**2 + xs
+    for a, b in [(1, 2), (2, 3), (3, 5), (2, 9.3), (0.7, 8.5)]:
+        res = pp.integrate_spline(xs, ys, a, b)
+        end = b**4 / 4 - b**3 / 3 + b**2 / 2
+        start = a**4 / 4 - a**3 / 3 + a**2 / 2
+        truth = end - start
+        assert (abs(res - truth) / truth) < 1e-3
+
+        # Test integrating over log
+        res = pp.integrate_spline(np.log(xs), xs*ys, np.log(a), np.log(b))
+        assert (abs(res - truth) / truth) < 1e-2
+
+
+
+
 @pytest.mark.skip()
 def test_convolution_convergence():
     (Omega_b, Omega_m, h0), z_chis, chis, d_as = get_cosmology(0)
@@ -186,7 +216,7 @@ def test_convolution_convergence():
         halo = pp.BBPSProfile(M, z, Omega_b, Omega_m)
         convolved = [halo.convolved_y(da=da_interp(z), n=n) for n in ns]
         fig, axs = plt.subplots(nrows=2, figsize=(8, 6), sharex=True,
-                                gridspec_kw={'height_ratios':[2, 1]})
+                                gridspec_kw={'height_ratios': [2, 1]})
         # Plot first
         axs[0].loglog()
         for i, (rs, vals) in enumerate(convolved):
