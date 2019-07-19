@@ -740,7 +740,7 @@ class BBPSProfile:
         Returns:
             float or array: The FFT for each `k`.
         '''
-        k = np.asarray(k, dtype=np.double)
+        k = np.ascontiguousarray(k, dtype=np.double)
 
         scalar_input = False
         if k.ndim == 0:
