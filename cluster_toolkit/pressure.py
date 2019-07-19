@@ -20,6 +20,7 @@ from astropy.convolution import Gaussian2DKernel, convolve_fft
 from cluster_toolkit import _dcast, _lib
 import numpy as np
 from scipy.integrate import quad
+from scipy.interpolate import interp2d
 
 # Battaglia best fit parameters
 _BBPS_params_P_0 = (18.1, 0.154, -0.758)
@@ -590,6 +591,81 @@ class BBPSProfile:
         fftd, ks = np.abs(fftd[1:-1].imag), ks[ks > 0]
 
         return 2*np.pi*ks, (fftd / ks) * 2 * (rmax / (nr - 1))
+
+    @classmethod
+    def two_halo(cls, rmax, nr, omega_b, omega_m,
+                 hmb_m, hmb_z, hmb_b,
+                 hmf_m, hmf_z, hmf_f,
+                 P_lin_k, P_lin_z, P_lin):
+        '''
+        Computes the 2-halo term :math:`\\xi_{h, P}(r | M, z)`:
+
+        :math:`\\xi_{h,P}(r | M, z) = \\int_0^\infty dk \\frac{k^2}{2 \\pi^2} \
+                sin(kr) / (kr) P_{h, P}(k | M, z)`
+        :math:`P_{h, P}(k | M, z) = b(M, z) P_{lin}(k, z) \\int_0^\infty \
+                dM^\\prime \\frac{dn}{dM^\\prime} b(M^\\prime, z) \
+                u_P(k | M^\\prime, z)`
+        :math:`u_P(k | M, z) = \int_0^\\infty dr 4\\pi r^2 sin(kr)/(kr) \
+                P_e(r | M^\\prime, z)`
+
+        Args:
+            rmax (float): The maximum R to evaluate the pressure profile at. \
+                          (r = 0..maxR, in nr steps, is used).
+            nr (int): Number of r samples to use in the FFT.
+            omega_b (float): Baryon fraction.
+            omega_m (float): Matter fraction.
+            hmb_m (1d array): The mass points at which the halo mass bias is \
+                              evaluated. Units: :math:`M_{sun}`.
+            hmb_z (1d array): The redshifts at which the halo mass bias is \
+                              evaluated.
+            hmb_b (2d array): The evaluated halo mass bias, for each (m, z) \
+                              combination.
+            hmf_m (1d array): The mass points at which the halo mass function \
+                              is evaluated. Units: :math:`M_{sun}`.
+            hmf_z (1d array): The redshifts at which the halo mass function is \
+                              evaluated.
+            hmf_f (2d array): The evaluated halo mass function, for each \
+                              (m, z) combination.
+            P_lin_k (1d array): The wavenumbers at which the linear matter \
+                                power spectrum is evaluated.
+            P_lin_z (1d array): The redshifts at which the linear matter power \
+                                spectrum is evaluated.
+            P_lin (2d array): The evaluated linear matter power spectrum, for \
+                              each (k, z) combination.
+        '''
+        return
+
+    @classmethod
+    def two_halo_mass_integrand(cls, ks, z,
+                                omega_b, omega_m,
+                                hmb_m, hmb_z, hmb_b,
+                                hmf_m, hmf_z, hmf_f,
+                                nM=1000):
+        '''
+        A mass-weighted pressure profile, in Fourier space.
+        '''
+        hmb = interp2d(hmb_m, hmb_z, hmb_b)
+        hmf = interp2d(hmf_m, hmf_z, hmf_f)
+
+        Mmin = max(hmb_m.min(), hmf_m.min())
+        Mmax = min(hmb_m.max(), hmf_m.max())
+        lnMs = np.linspace(np.log(Mmin), np.log(Mmax), nM)
+        Ms = np.exp(lnMs)
+
+        # Precompute the FFT'd pressure profile
+        up = []
+        for M in Ms:
+            halo = cls(M, z, omega_b, omega_m)
+            up.append(halo._C_fourier_pressure(ks))
+        up = np.array(up)
+
+        # Integrate over lnM - so f(M) * dM -> f(M) * M * d(lnM)
+        results = np.zeros_like(ks, dtype=np.double)
+        for ki, k in enumerate(ks):
+            igrnd = Ms * hmf(Ms, z) * hmb(Ms, z) * up[:, ki]
+            results[ki] = (integrate_spline(lnMs, igrnd, lnMs[0], lnMs[-1]))
+
+        return results
 
     def _projected_pressure(self, r, dist=8, epsrel=1e-3):
         '''
