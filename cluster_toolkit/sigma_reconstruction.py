@@ -2,7 +2,7 @@
 """
 
 import cluster_toolkit
-from cluster_toolkit import _dcast
+from cluster_toolkit import _ArrayWrapper
 import numpy as np
 
 def Sigma_REC_from_DeltaSigma(R, DeltaSigma):
@@ -22,8 +22,8 @@ def Sigma_REC_from_DeltaSigma(R, DeltaSigma):
     Returns:
         Reconstructed surface mass density.
     """
-    R = np.asarray(R)
-    DeltaSigma = np.asarray(DeltaSigma)
+    R = _ArrayWrapper(R, allow_multidim=True)
+    DeltaSigma = _ArrayWrapper(DeltaSigma, allow_multidim=True)
     if R.shape != DeltaSigma.shape:
         raise Exception("R and DeltaSigma must have the same shape.")
 
@@ -37,8 +37,8 @@ def Sigma_REC_from_DeltaSigma(R, DeltaSigma):
 
     #Note the order here, we integrate DOWNWARD
     dlnR = lnR[0] - lnR[1]
-    
-    Sigma = np.zeros(len(R)-1)
-    cluster_toolkit._lib.Sigma_REC_from_DeltaSigma(dlnR, _dcast(DeltaSigma),
-                                                   len(R), _dcast(Sigma))
-    return Sigma
+
+    Sigma = _ArrayWrapper.zeros(len(R)-1)
+    cluster_toolkit._lib.Sigma_REC_from_DeltaSigma(dlnR, DeltaSigma.cast(),
+                                                   len(R), Sigma.cast())
+    return Sigma.finish()

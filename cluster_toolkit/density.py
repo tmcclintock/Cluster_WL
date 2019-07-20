@@ -2,7 +2,7 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _dcast
+from cluster_toolkit import _ArrayWrapper
 import numpy as np
 
 def rho_nfw_at_r(r, M, c, Omega_m, delta=200):
@@ -19,20 +19,12 @@ def rho_nfw_at_r(r, M, c, Omega_m, delta=200):
         float or array like: NFW halo density profile in Msun h^2/Mpc^3 comoving.
 
     """
-    r = np.asarray(r)
-    scalar_input = False
-    if r.ndim == 0:
-        r = r[None] #makes r 1D
-        scalar_input = True
-    if r.ndim > 1:
-        raise Exception("r cannot be a >1D array.")
+    r = _ArrayWrapper(r, 'r')
 
-    rho = np.zeros_like(r)
-    cluster_toolkit._lib.calc_rho_nfw(_dcast(r), len(r), M, c, delta,
-                                      Omega_m, _dcast(rho))
-    if scalar_input:
-        return np.squeeze(rho)
-    return rho
+    rho = _ArrayWrapper.zeros_like(r)
+    cluster_toolkit._lib.calc_rho_nfw(r.cast(), len(r), M, c, delta,
+                                      Omega_m, rho.cast())
+    return rho.finish()
 
 
 def rho_einasto_at_r(r, M, rs, alpha, Omega_m, delta=200, rhos=-1.):
@@ -51,18 +43,10 @@ def rho_einasto_at_r(r, M, rs, alpha, Omega_m, delta=200, rhos=-1.):
         float or array like: Einasto halo density profile in Msun h^2/Mpc^3 comoving.
 
     """
-    r = np.asarray(r)
-    scalar_input = False
-    if r.ndim == 0:
-        r = r[None] #makes r 1D
-        scalar_input = True
-    if r.ndim > 1:
-        raise Exception("r cannot be a >1D array.")
+    r = _ArrayWrapper(r, 'r')
 
-    rho = np.zeros_like(r)
-    cluster_toolkit._lib.calc_rho_einasto(_dcast(r), len(r), M, rhos, rs,
-                                          alpha, delta, Omega_m, _dcast(rho))
-    if scalar_input:
-        return np.squeeze(rho)
-    return rho
+    rho = _ArrayWrapper.zeros_like(r)
+    cluster_toolkit._lib.calc_rho_einasto(r.cast(), len(r), M, rhos, rs,
+                                          alpha, delta, Omega_m, rho.cast())
+    return rho.finish()
 

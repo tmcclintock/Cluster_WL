@@ -26,12 +26,53 @@ if not os.path.exists(lib_file) and not on_rtd:
     lib_file = alt_files[0]
 
 _ffi = cffi.FFI()
-for file_name in glob.glob(os.path.join(include_dir,'*.h')):
+for file_name in glob.glob(os.path.join(include_dir, '*.h')):
     _ffi.cdef(open(file_name).read())
 _lib = _ffi.dlopen(lib_file)
 
-def _dcast(x):
-    if isinstance(x, list): x = np.asarray(x, dtype=np.float64, order='C')
-    return _ffi.cast('double*', x.ctypes.data)
+
+class _ArrayWrapper:
+    def __init__(self, obj, name=None, allow_multidim=False):
+        self.arr = np.require(obj, dtype=np.float64,
+                              requirements=['C_CONTIGUOUS'])
+        self.scalar = self.arr.ndim == 0
+        self.ndim = self.arr.ndim
+        self.shape = self.arr.shape
+
+        if (self.ndim > 1) and not allow_multidim:
+            if name is not None:
+                raise ValueError('{} cannot be >1 dim'.format(name))
+            raise ValueError('array cannot be >1 dim')
+
+    def cast(self):
+        return _ffi.cast('double*', self.arr.ctypes.data)
+
+    def finish(self):
+        if self.scalar:
+            return self.arr[()]
+        return self.arr
+
+    def __len__(self):
+        if self.scalar:
+            return 1
+        return self.arr.size
+
+    @classmethod
+    def zeros_like(cls, obj):
+        if isinstance(obj, _ArrayWrapper):
+            return cls(np.zeros_like(obj.arr))
+        return cls(np.zeros_like(obj))
+
+    @classmethod
+    def zeros(cls, shape):
+        return cls(np.zeros(shape, dtype=np.double))
+
+    @classmethod
+    def ones_like(cls, obj):
+        return cls(np.ones_like(obj))
+
+    @classmethod
+    def ones(cls, shape):
+        return cls(np.ones(shape, dtype=np.double))
 
 from . import averaging, bias, boostfactors, concentration, deltasigma, density, exclusion, massfunction, miscentering, peak_height, profile_derivatives, sigma_reconstruction, xi

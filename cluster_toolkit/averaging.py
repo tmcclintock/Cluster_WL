@@ -2,13 +2,14 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _dcast
+from cluster_toolkit import _ArrayWrapper
 import numpy as np
+
 
 def average_profile_in_bins(Redges, R, prof):
     """Average profile in bins.
 
-    Calculates the average of some projected profile in a 
+    Calculates the average of some projected profile in a
     radial bins in Mpc/h comoving.
 
     Args:
@@ -20,27 +21,31 @@ def average_profile_in_bins(Redges, R, prof):
         numpy.array: Average profile in bins between the edges provided.
 
     """
-    Redges = np.asarray(Redges)
-    if Redges.ndim == 0: #Is scalar
-        Redges = r[None] #makes r 1D
+    Redges = _ArrayWrapper(Redges)
+    R = _ArrayWrapper(R)
+    prof = _ArrayWrapper(prof)
+
+    if Redges.ndim == 0:
         raise Exception("Must supply a left and right edge.")
     if Redges.ndim > 1:
         raise Exception("Redges cannot be a >1D array.")
-    if np.min(Redges) < np.min(R):
+    if np.min(Redges.arr) < np.min(R.arr):
         raise Exception("Minimum edge must be >= minimum R")
-    if np.max(Redges) > np.max(R):
+    if np.max(Redges.arr) > np.max(R.arr):
         raise Exception("Maximum edge must be <= maximum R")
-    
-    ave_prof = np.zeros(len(Redges)-1)
-    cluster_toolkit._lib.average_profile_in_bins(_dcast(Redges), len(Redges),
-                                                 _dcast(R), len(R), _dcast(prof),
-                                                 _dcast(ave_prof))
-    return ave_prof
+
+    ave_prof = _ArrayWrapper(np.zeros(len(Redges) - 1))
+    cluster_toolkit._lib.average_profile_in_bins(Redges.cast(), len(Redges),
+                                                 R.cast(), len(R),
+                                                 prof.cast(),
+                                                 ave_prof.cast())
+    return ave_prof.finish()
+
 
 def average_profile_in_bin(Rlow, Rhigh, R, prof):
     """Average profile in a bin.
 
-    Calculates the average of some projected profile in a 
+    Calculates the average of some projected profile in a
     radial bin in Mpc/h comoving.
 
     Args:

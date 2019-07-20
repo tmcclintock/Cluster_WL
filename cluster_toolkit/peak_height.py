@@ -2,9 +2,8 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _dcast
+from cluster_toolkit import _ArrayWrapper
 import numpy as np
-from numpy import ascontiguousarray as ACA
 
 def sigma2_at_M(M, k, P, Omega_m):
     """RMS variance in top hat sphere of lagrangian radius R [Mpc/h comoving] corresponding to a mass M [Msun/h] of linear power spectrum.
@@ -19,12 +18,15 @@ def sigma2_at_M(M, k, P, Omega_m):
         float or array like: RMS variance of top hat sphere.
 
     """
-    if type(M) is list or type(M) is np.ndarray:
-        s2 = np.zeros_like(M)
-        cluster_toolkit._lib.sigma2_at_M_arr(_dcast(M), len(M), _dcast(k), _dcast(P), len(k), Omega_m, _dcast(s2))
-        return s2
+    k = _ArrayWrapper(k, allow_multidim=True)
+    P = _ArrayWrapper(P, allow_multidim=True)
+    if isinstance(M, list) or isinstance(M, np.ndarray):
+        M = _ArrayWrapper(M, allow_multidim=True)
+        s2 = _ArrayWrapper.zeros_like(M)
+        cluster_toolkit._lib.sigma2_at_M_arr(M.cast(), len(M), k.cast(), P.cast(), len(k), Omega_m, s2.cast())
+        return s2.finish()
     else:
-        return cluster_toolkit._lib.sigma2_at_M(M, _dcast(k), _dcast(P), len(k), Omega_m)
+        return cluster_toolkit._lib.sigma2_at_M(M, k.cast(), P.cast(), len(k), Omega_m)
 
 def sigma2_at_R(R, k, P):
     """RMS variance in top hat sphere of radius R [Mpc/h comoving] of linear power spectrum.
@@ -38,12 +40,15 @@ def sigma2_at_R(R, k, P):
         float or array like: RMS variance of a top hat sphere.
 
     """
-    if type(R) is list or type(R) is np.ndarray:
-        s2 = np.zeros_like(R)
-        cluster_toolkit._lib.sigma2_at_R_arr(_dcast(R), len(R), _dcast(k), _dcast(P), len(k), _dcast(s2))
-        return s2
+    k = _ArrayWrapper(k, allow_multidim=True)
+    P = _ArrayWrapper(P, allow_multidim=True)
+    if isinstance(R, list) or isinstance(R, np.ndarray):
+        R = _ArrayWrapper(R)
+        s2 = _ArrayWrapper.zeros_like(R)
+        cluster_toolkit._lib.sigma2_at_R_arr(R.cast(), len(R), k.cast(), P.cast(), len(k), s2.cast())
+        return s2.finish()
     else:
-        return cluster_toolkit._lib.sigma2_at_R(R, _dcast(k), _dcast(P), len(k))
+        return cluster_toolkit._lib.sigma2_at_R(R, k.cast(), P.cast(), len(k))
 
 def nu_at_M(M, k, P, Omega_m):
     """Peak height of top hat sphere of lagrangian radius R [Mpc/h comoving] corresponding to a mass M [Msun/h] of linear power spectrum.
@@ -58,12 +63,15 @@ def nu_at_M(M, k, P, Omega_m):
         nu (float or array like): Peak height.
 
     """
-    if type(M) is list or type(M) is np.ndarray:
-        nu = np.zeros_like(M)
-        cluster_toolkit._lib.nu_at_M_arr(_dcast(M), len(M), _dcast(k), _dcast(P), len(k), Omega_m, _dcast(nu))
-        return nu
+    k = _ArrayWrapper(k, allow_multidim=True)
+    P = _ArrayWrapper(P, allow_multidim=True)
+    if isinstance(M, list) or isinstance(M, np.ndarray):
+        M = _ArrayWrapper(M)
+        nu = _ArrayWrapper.zeros_like(M)
+        cluster_toolkit._lib.nu_at_M_arr(M.cast(), len(M), k.cast(), P.cast(), len(k), Omega_m, nu.cast())
+        return nu.finish()
     else:
-        return cluster_toolkit._lib.nu_at_M(M, _dcast(k), _dcast(P), len(k), Omega_m)
+        return cluster_toolkit._lib.nu_at_M(M, k.cast(), P.cast(), len(k), Omega_m)
 
 def nu_at_R(R, k, P):
     """Peak height of top hat sphere of radius R [Mpc/h comoving] of linear power spectrum.
@@ -77,16 +85,19 @@ def nu_at_R(R, k, P):
         float or array like: Peak height.
 
     """
-    if type(R) is list or type(R) is np.ndarray:
-        nu = np.zeros_like(R)
-        cluster_toolkit._lib.nu_at_R_arr(_dcast(R), len(R), _dcast(k), _dcast(P), len(k), _dcast(nu))
-        return nu
+    k = _ArrayWrapper(k, allow_multidim=True)
+    P = _ArrayWrapper(P, allow_multidim=True)
+    if isinstance(R, list) or isinstance(R, np.ndarray):
+        R = _ArrayWrapper(R)
+        nu = _ArrayWrapper.zeros_like(R)
+        cluster_toolkit._lib.nu_at_R_arr(R.cast(), len(R), k.cast(), P.cast(), len(k), nu.cast())
+        return nu.finish()
     else:
-        return cluster_toolkit._lib.nu_at_R(R, _dcast(k), _dcast(P), len(k))
+        return cluster_toolkit._lib.nu_at_R(R, k.cast(), P.cast(), len(k))
 
 def dsigma2dM_at_M(M, k, P, Omega_m):
-    """Derivative w.r.t. mass of RMS variance in top hat sphere of 
-    lagrangian radius R [Mpc/h comoving] corresponding to a mass 
+    """Derivative w.r.t. mass of RMS variance in top hat sphere of
+    lagrangian radius R [Mpc/h comoving] corresponding to a mass
     M [Msun/h] of linear power spectrum.
 
     Args:
@@ -99,44 +110,57 @@ def dsigma2dM_at_M(M, k, P, Omega_m):
         float or array like: d/dM of RMS variance of top hat sphere.
 
     """
-    if type(M) is list or type(M) is np.ndarray:
-        ds2dM = np.zeros_like(M)
-        cluster_toolkit._lib.dsigma2dM_at_M_arr(_dcast(M), len(M), _dcast(k),
-                                                _dcast(P), len(k), Omega_m,
-                                                _dcast(ds2dM))
-        return ds2dM
+    P = _ArrayWrapper(P, allow_multidim=True)
+    k = _ArrayWrapper(k, allow_multidim=True)
+    if isinstance(M, list) or isinstance(M, np.ndarray):
+        M = _ArrayWrapper(M, allow_multidim=True)
+        ds2dM = _ArrayWrapper.zeros_like(M)
+        cluster_toolkit._lib.dsigma2dM_at_M_arr(M.cast(), len(M), k.cast(),
+                                                P.cast(), len(k), Omega_m,
+                                                ds2dM.cast())
+        return ds2dM.finish()
     else:
-        return cluster_toolkit._lib.dsigma2dM_at_M(M, _dcast(k), _dcast(P),
+        return cluster_toolkit._lib.dsigma2dM_at_M(M, k.cast(), P.cast(),
                                                    len(k), Omega_m)
 
-    return 0
 
-    
 def _calc_sigma2_at_R(R, k, P, s2):
-    """Direct call to vectorized version of RMS variance in top hat 
+    """Direct call to vectorized version of RMS variance in top hat
     sphere of radius R [Mpc/h comoving] of linear power spectrum.
 
     """
-    cluster_toolkit._lib.sigma2_at_R_arr(_dcast(R), len(R), _dcast(k), _dcast(P), len(k), _dcast(s2))
-    return
+    R = _ArrayWrapper(R, allow_multidim=True)
+    k = _ArrayWrapper(k, allow_multidim=True)
+    P = _ArrayWrapper(P, allow_multidim=True)
+    s2 = _ArrayWrapper(s2, allow_multidim=True)
+    cluster_toolkit._lib.sigma2_at_R_arr(R.cast(), len(R), k.cast(), P.cast(), len(k), s2.cast())
 
 def _calc_sigma2_at_M(M, k, P, Omega_m, s2):
     """Direct call to vectorized version of RMS variance in top hat sphere of lagrangian radius R [Mpc/h comoving] corresponding to a mass M [Msun/h] of linear power spectrum.
 
     """
-    cluster_toolkit._lib.sigma2_at_M_arr(_dcast(M), len(M), _dcast(k), _dcast(P), len(k), Omega_m, _dcast(s2))
-    return
+    M = _ArrayWrapper(M, allow_multidim=True)
+    k = _ArrayWrapper(k, allow_multidim=True)
+    P = _ArrayWrapper(P, allow_multidim=True)
+    s2 = _ArrayWrapper(s2, allow_multidim=True)
+    cluster_toolkit._lib.sigma2_at_M_arr(M.cast(), len(M), k.cast(), P.cast(), len(k), Omega_m, s2.cast())
 
 def _calc_nu_at_R(R, k, P, nu):
     """Direct call to vectorized version of peak height of R.
 
     """
-    cluster_toolkit._lib.nu_at_R_arr(_dcast(R), len(R), _dcast(k), _dcast(P), len(k), _dcast(nu))
-    return
+    R = _ArrayWrapper(R, allow_multidim=True)
+    k = _ArrayWrapper(k, allow_multidim=True)
+    P = _ArrayWrapper(P, allow_multidim=True)
+    nu = _ArrayWrapper(nu, allow_multidim=True)
+    cluster_toolkit._lib.nu_at_R_arr(R.cast(), len(R), k.cast(), P.cast(), len(k), nu.cast())
 
 def _calc_nu_at_M(M, k, P, Omega_m, nu):
     """Direct call to vectorized version of peak height of M.
 
     """
-    cluster_toolkit._lib.nu_at_M_arr(_dcast(M), len(M), _dcast(k), _dcast(P), len(k), Omega_m, _dcast(nu))
-    return
+    M = _ArrayWrapper(M, allow_multidim=True)
+    k = _ArrayWrapper(k, allow_multidim=True)
+    P = _ArrayWrapper(P, allow_multidim=True)
+    nu = _ArrayWrapper(nu, allow_multidim=True)
+    cluster_toolkit._lib.nu_at_M_arr(M.cast(), len(M), k.cast(), P.cast(), len(k), Omega_m, nu.cast())

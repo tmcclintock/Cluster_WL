@@ -2,9 +2,9 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _dcast
+from cluster_toolkit import _ArrayWrapper
 import numpy as np
-from .peak_height import *
+# from .peak_height import *
 
 def bias_at_M(M, k, P, Omega_m, delta=200):
     """Tinker et al. 2010 bais at mass M [Msun/h].
@@ -20,21 +20,17 @@ def bias_at_M(M, k, P, Omega_m, delta=200):
         float or array like: Halo bias.
 
     """
-    M = np.asarray(M)
-    scalar_input = False
-    if M.ndim == 0:
-        M = M[None] #makes r 1D
-        scalar_input = True
-    if M.ndim > 1:
-        raise Exception("M cannot be a >1D array.")
-    M = np.require(M, dtype=np.float64, requirements=["C"])
-    k = np.require(k, dtype=np.float64, requirements=["C"])
-    P = np.require(P, dtype=np.float64, requirements=["C"])
-    bias = np.zeros_like(M)
-    cluster_toolkit._lib.bias_at_M_arr(_dcast(M), len(M), delta, _dcast(k), _dcast(P), len(k), Omega_m, _dcast(bias))
-    if scalar_input:
-        return np.squeeze(bias)
-    return bias
+    M = _ArrayWrapper(M, 'M')
+    k = _ArrayWrapper(k, allow_multidim=True)
+    P = _ArrayWrapper(P, allow_multidim=True)
+    if k.shape != P.shape:
+        raise ValueError('k and P must have the same shape')
+
+    bias = _ArrayWrapper.zeros_like(M)
+    cluster_toolkit._lib.bias_at_M_arr(M.cast(), len(M), delta,
+                                       k.cast(), P.cast(), len(k),
+                                       Omega_m, bias.cast())
+    return bias.finish()
 
 def bias_at_R(R, k, P, delta=200):
     """Tinker 2010 bais at mass M [Msun/h] corresponding to radius R [Mpc/h comoving].
@@ -49,22 +45,16 @@ def bias_at_R(R, k, P, delta=200):
         float or array like: Halo bias.
 
     """
-    R = np.asarray(R)
-    scalar_input = False
-    if R.ndim == 0:
-        R = R[None] #makes r 1D
-        scalar_input = True
-    if R.ndim > 1:
-        raise Exception("R cannot be a >1D array.")
-    R = np.require(R, dtype=np.float64, requirements=["C"])
-    k = np.require(k, dtype=np.float64, requirements=["C"])
-    P = np.require(P, dtype=np.float64, requirements=["C"])
-    bias = np.zeros_like(R)
-    cluster_toolkit._lib.bias_at_R_arr(_dcast(R), len(R), delta, _dcast(k), _dcast(P), len(k), _dcast(bias))
-    if scalar_input:
-        return np.squeeze(bias)
-    return bias
-    
+    R = _ArrayWrapper(R, 'R')
+    k = _ArrayWrapper(k)
+    P = _ArrayWrapper(P)
+
+    bias = _ArrayWrapper.zeros_like(R)
+    cluster_toolkit._lib.bias_at_R_arr(R.cast(), len(R), delta,
+                                       k.cast(), P.cast(), len(k),
+                                       bias.cast())
+    return bias.finish()
+
 def bias_at_nu(nu, delta=200):
     """Tinker 2010 bais at peak height nu.
 
@@ -76,19 +66,12 @@ def bias_at_nu(nu, delta=200):
         float or array like: Halo bias.
 
     """
-    nu = np.asarray(nu)
-    scalar_input = False
-    if nu.ndim == 0:
-        nu = nu[None] #makes nu 1D
-        scalar_input = True
-    if nu.ndim > 1:
-        raise Exception("nu cannot be a >1D array.")
+    nu = _ArrayWrapper(nu, 'nu')
 
-    bias = np.zeros_like(nu)
-    cluster_toolkit._lib.bias_at_nu_arr(_dcast(nu), len(nu), delta, _dcast(bias))
-    if scalar_input:
-        return np.squeeze(bias)
-    return bias
+    bias = _ArrayWrapper.zeros_like(nu)
+    cluster_toolkit._lib.bias_at_nu_arr(nu.cast(), len(nu), delta,
+                                        bias.cast())
+    return bias.finish()
 
 def dbiasdM_at_M(M, k, P, Omega_m, delta=200):
     """d/dM of Tinker et al. 2010 bais at mass M [Msun/h].
@@ -102,31 +85,25 @@ def dbiasdM_at_M(M, k, P, Omega_m, delta=200):
 
     Returns:
         float or array like: Derivative of the halo bias.
-    
+
     """
-    M = np.asarray(M)
-    scalar_input = False
-    if M.ndim == 0:
-        M = M[None] #makes M 1D
-        scalar_input = True
-    if M.ndim > 1:
-        raise Exception("M cannot be a >1D array.")
-    M = np.require(M, dtype=np.float64, requirements=["C"])
-    k = np.require(k, dtype=np.float64, requirements=["C"])
-    P = np.require(P, dtype=np.float64, requirements=["C"])
-    deriv = np.zeros_like(M)
-    cluster_toolkit._lib.dbiasdM_at_M_arr(_dcast(M), len(M), delta, _dcast(k),
-                                          _dcast(P), len(k), Omega_m,
-                                          _dcast(deriv))
-    if scalar_input:
-        return np.squeeze(deriv)
-    return deriv
+    M = _ArrayWrapper(M, 'M')
+    k = _ArrayWrapper(k, allow_multidim=True)
+    P = _ArrayWrapper(P, allow_multidim=True)
+
+    deriv = _ArrayWrapper.zeros_like(M)
+    cluster_toolkit._lib.dbiasdM_at_M_arr(M.cast(), len(M), delta, k.cast(),
+                                          P.cast(), len(k), Omega_m,
+                                          deriv.cast())
+    return deriv.finish()
 
 def _bias_at_nu_FREEPARAMS(nu, A, a, B, b, C, c, delta=200):
     """A special function used only for quickly computing best fit parameters
     for the halo bias models.
     """
-    bias = np.zeros_like(nu)
-    cluster_toolkit._lib.bias_at_nu_arr_FREEPARAMS(_dcast(nu), len(nu), delta,
-                                                   A, a, B, b, C, c, _dcast(bias))
-    return bias
+    nu = _ArrayWrapper(nu, allow_multidim=True)
+    bias = _ArrayWrapper.zeros_like(nu)
+    cluster_toolkit._lib.bias_at_nu_arr_FREEPARAMS(nu.cast(), len(nu), delta,
+                                                   A, a, B, b, C, c,
+                                                   bias.cast())
+    return bias.finish()
