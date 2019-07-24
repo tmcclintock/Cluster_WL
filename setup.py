@@ -18,7 +18,7 @@ ext=Extension("cluster_toolkit._cluster_toolkit",
               sources,
               depends=headers,
               include_dirs=['include'],
-              extra_compile_args=[os.path.expandvars(flag) for flag in cflags],
+              extra_compile_args=[os.path.expandvars(flag) for flag in cflags]+['-std=c99'],
               extra_link_args=[os.path.expandvars(flag) for flag in lflags])
 
 dist = setup(name="cluster_toolkit",
