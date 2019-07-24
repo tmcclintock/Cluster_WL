@@ -18,8 +18,8 @@ ext=Extension("cluster_toolkit._cluster_toolkit",
               sources,
               depends=headers,
               include_dirs=['include'],
-              extra_compile_args=[os.path.expandvars(flag) for flag in cflags]+[b'-std=c99'],
-              extra_link_args=[os.path.expandvars(flag) for flag in lflags])
+              extra_compile_args=[str(os.path.expandvars(flag), 'utf-8') for flag in cflags]+['-std=c99'],
+              extra_link_args=[str(os.path.expandvars(flag), 'utf-8') for flag in lflags])
 
 dist = setup(name="cluster_toolkit",
              author="Tom McClintock",
