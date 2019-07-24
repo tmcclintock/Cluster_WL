@@ -14,12 +14,20 @@ try:
 except OSError:
     raise Exception("Error: must have GSL installed and gsl-config working")
 
+# Python 2/3 compatibility hack
+try:
+    extra_compile_args=[str(os.path.expandvars(flag), 'utf-8') for flag in cflags]+['-std=c99']
+    extra_link_args=[str(os.path.expandvars(flag), 'utf-8') for flag in lflags]
+except TypeError:
+    extra_compile_args=[os.path.expandvars(flag) for flag in cflags]+['-std=c99']
+    extra_link_args=[os.path.expandvars(flag) for flag in lflags]
+
 ext=Extension("cluster_toolkit._cluster_toolkit",
               sources,
               depends=headers,
               include_dirs=['include'],
-              extra_compile_args=[str(os.path.expandvars(flag), 'utf-8') for flag in cflags]+['-std=c99'],
-              extra_link_args=[str(os.path.expandvars(flag), 'utf-8') for flag in lflags])
+              extra_compile_args=extra_compile_args,
+              extra_link_args=extra_link_args)
 
 dist = setup(name="cluster_toolkit",
              author="Tom McClintock",
