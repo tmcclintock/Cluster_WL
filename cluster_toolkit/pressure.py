@@ -593,10 +593,12 @@ class BBPSProfile:
         return 2*np.pi*ks, (fftd / ks) * 2 * (rmax / (nr - 1))
 
     @classmethod
-    def two_halo(cls, rmax, nr, omega_b, omega_m,
+    def two_halo(cls, rs, ks, z, omega_b, omega_m,
                  hmb_m, hmb_z, hmb_b,
                  hmf_m, hmf_z, hmf_f,
-                 P_lin_k, P_lin_z, P_lin):
+                 P_lin_k, P_lin_z, P_lin,
+                 nM=1000, limit=1000,
+                 epsabs=1e-21):
         '''
         Computes the 2-halo term :math:`\\xi_{h, P}(r | M, z)`:
 
@@ -609,9 +611,7 @@ class BBPSProfile:
                 P_e(r | M^\\prime, z)`
 
         Args:
-            rmax (float): The maximum R to evaluate the pressure profile at. \
-                          (r = 0..maxR, in nr steps, is used).
-            nr (int): Number of r samples to use in the FFT.
+            ks (array):
             omega_b (float): Baryon fraction.
             omega_m (float): Matter fraction.
             hmb_m (1d array): The mass points at which the halo mass bias is \
@@ -632,8 +632,25 @@ class BBPSProfile:
                                 spectrum is evaluated.
             P_lin (2d array): The evaluated linear matter power spectrum, for \
                               each (k, z) combination.
+
+        Returns:
+            (array): TODO
         '''
-        return
+        igrnds = cls.two_halo_mass_integrand(ks, z, omega_b, omega_m,
+                                             hmb_m, hmb_z, hmb_b,
+                                             hmf_m, hmf_z, hmf_f,
+                                             nM=nM)
+
+        P_lin = interp2d(P_lin_k, P_lin_z, P_lin)
+        # k_min, k_max = P_lin_k.min(), P_lin_k.max()
+
+        Ps = P_lin(ks, z)
+        radial_term = inv_spherical_fourier_transform(rs, ks, Ps * igrnds,
+                                                      limit=limit,
+                                                      epsabs=epsabs)
+
+        # TODO - mass bias
+        return radial_term
 
     @classmethod
     def two_halo_mass_integrand(cls, ks, z,
@@ -663,7 +680,7 @@ class BBPSProfile:
         results = np.zeros_like(ks, dtype=np.double)
         for ki, k in enumerate(ks):
             igrnd = Ms * hmf(Ms, z) * hmb(Ms, z) * up[:, ki]
-            results[ki] = (integrate_spline(lnMs, igrnd, lnMs[0], lnMs[-1]))
+            results[ki] = integrate_spline(lnMs, igrnd, lnMs[0], lnMs[-1])
 
         return results
 

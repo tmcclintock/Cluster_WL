@@ -203,8 +203,6 @@ def test_spline_integration():
         assert (abs(res - truth) / truth) < 1e-2
 
 
-
-
 @pytest.mark.skip()
 def test_convolution_convergence():
     (Omega_b, Omega_m, h0), z_chis, chis, d_as = get_cosmology(0)
