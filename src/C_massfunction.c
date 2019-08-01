@@ -20,7 +20,7 @@
 #define del 1e-6
 
 ///////////////// G multiplicity function///////////////////
-int G_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, double d, double e, double f, double g, double*G){
+void G_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, double d, double e, double f, double g, double*G){
   double*sigma = (double*)malloc(sizeof(double)*NM);
   sigma2_at_M_arr(M, NM, k, P, Nk, om, sigma);
   int i;
@@ -29,10 +29,9 @@ int G_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, double d
   }
   G_at_sigma_arr(sigma, NM, d, e, f, g, G);
   free(sigma);
-  return 0;
 }
 
-int G_at_sigma_arr(double*sigma, int Ns, double d, double e, double f, double g, double*G){
+void G_at_sigma_arr(double*sigma, int Ns, double d, double e, double f, double g, double*G){
   //Compute the prefactor B
   double d2 = 0.5*d;
   double gamma_d2 = gsl_sf_gamma(d2);
@@ -43,12 +42,11 @@ int G_at_sigma_arr(double*sigma, int Ns, double d, double e, double f, double g,
   for(i = 0; i < Ns; i++){
     G[i] = B*exp(-g/(sigma[i]*sigma[i]))*(pow(sigma[i]/e, -d)+pow(sigma[i], -f));
   }
-  return 0;
 }
 
 ///////////////// dndM functions below ///////////////////
 
-int dndM_sigma2_precomputed(double*M, double*sigma2, double*dsigma2dM, int NM, double Omega_m, double d, double e, double f, double g, double*dndM){
+void dndM_sigma2_precomputed(double*M, double*sigma2, double*dsigma2dM, int NM, double Omega_m, double d, double e, double f, double g, double*dndM){
   //This function exists to make emulator tests faster with sigma^2(M) precomputed.
   double rhom = Omega_m*rhocrit; //normalization coefficient
   double*sigma = (double*)malloc(sizeof(double)*NM);
@@ -63,10 +61,9 @@ int dndM_sigma2_precomputed(double*M, double*sigma2, double*dsigma2dM, int NM, d
   }
   free(sigma);
   free(Gsigma);
-  return 0;
 }
 
-int dndM_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, double d, double e, double f, double g, double*dndM){
+void dndM_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, double d, double e, double f, double g, double*dndM){
   double*dsigma2dM = (double*)malloc(sizeof(double)*NM);
   double*sigma2 = (double*)malloc(sizeof(double)*NM);
   sigma2_at_M_arr(M, NM, k, P, Nk, om, sigma2);
@@ -74,7 +71,6 @@ int dndM_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, doubl
   dndM_sigma2_precomputed(M, sigma2, dsigma2dM, NM, om, d, e, f, g, dndM);
   free(sigma2);
   free(dsigma2dM);
-  return 0;
 }
 
 ///////////////// derivatives of the MF below ///////////////////
@@ -91,11 +87,18 @@ int n_in_bins(double*edges, int Nedges, double*M, double*dndM, int NM, double*N)
   gsl_spline*spline = gsl_spline_alloc(gsl_interp_cspline, NM);
   gsl_spline_init(spline, M, dndM, NM);
   gsl_interp_accel*acc = gsl_interp_accel_alloc();
-  int i;
+
+  if (!spline || !acc)
+      return GSL_ENOMEM;
+
+  int i, rc = GSL_SUCCESS;
   for(i = 0; i < Nedges-1; i++){
-    N[i] = gsl_spline_eval_integ(spline, edges[i], edges[i+1], acc);
+    rc = gsl_spline_eval_integ_e(spline, edges[i], edges[i+1], acc, &N[i]);
+    if (rc != GSL_SUCCESS)
+        break;
   }
+
   gsl_spline_free(spline);
   gsl_interp_accel_free(acc);
-  return 0;
+  return rc;
 }

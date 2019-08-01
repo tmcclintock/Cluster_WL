@@ -28,7 +28,14 @@ if not os.path.exists(lib_file) and not on_rtd:
 _ffi = cffi.FFI()
 for file_name in glob.glob(os.path.join(include_dir, '*.h')):
     _ffi.cdef(open(file_name).read())
+_ffi.cdef('const char * gsl_strerror(const int gsl_errno);')
 _lib = _ffi.dlopen(lib_file)
+
+
+def _handle_gsl_error(err, fn):
+    if err != 0:
+        msg = _ffi.string(_lib.gsl_strerror(err))
+        raise Exception('GSL error in function {}: {}'.format(fn.__name__, msg))
 
 
 class _ArrayWrapper:

@@ -32,7 +32,7 @@ double xi_nfw_at_r(double r, double Mass, double conc, int delta, double om){
   return xi;
 }
 
-int calc_xi_nfw(double*r, int Nr, double Mass, double conc, int delta, double om, double*xi_nfw){
+void calc_xi_nfw(double*r, int Nr, double Mass, double conc, int delta, double om, double*xi_nfw){
   int i;
   double rhom = om*rhomconst;//SM h^2/Mpc^3
   //double rho0_rhom = delta/(3.*(log(1.+conc)-conc/(1.+conc)));
@@ -44,9 +44,7 @@ int calc_xi_nfw(double*r, int Nr, double Mass, double conc, int delta, double om
     r_rs = r[i]/rscale;
     //xi_nfw[i] = rho0_rhom/(r_rs*(1+r_rs)*(1+r_rs)) - 1.;
     xi_nfw[i] = Mass/(4.*M_PI*rscale*rscale*rscale*fc)/(r_rs*(1+r_rs)*(1+r_rs))/rhom - 1.0;
-
   }
-  return 0;
 }
 
 double rhos_einasto_at_M(double Mass, double conc, double alpha, int delta,
@@ -63,7 +61,7 @@ double rhos_einasto_at_M(double Mass, double conc, double alpha, int delta,
   return num/den;
 }
 
-int calc_xi_einasto(double*r, int Nr, double Mass, double rhos, double conc,
+void calc_xi_einasto(double*r, int Nr, double Mass, double rhos, double conc,
 		    double alpha, int delta, double Omega_m, double*xi_einasto){
   double rhom = Omega_m*rhomconst;//SM h^2/Mpc^3
   double rdelta = pow(Mass/(1.3333333333333*M_PI*rhom*delta), 0.333333333333);
@@ -76,18 +74,16 @@ int calc_xi_einasto(double*r, int Nr, double Mass, double rhos, double conc,
     x = 2./alpha * pow(r[i]/rs, alpha);
     xi_einasto[i] = rhos/rhom * exp(-x) - 1;
   }
-  return 0;
 }
 
-int calc_xi_2halo(int Nr, double bias, double*xi_mm, double*xi_2halo){
+void calc_xi_2halo(int Nr, double bias, double*xi_mm, double*xi_2halo){
   int i;
   for(i = 0; i < Nr; i++){
     xi_2halo[i] = bias * xi_mm[i];
   }
-  return 0;
 }
 
-int calc_xi_hm(int Nr, double*xi_1h, double*xi_2h, double*xi_hm, int flag){
+void calc_xi_hm(int Nr, double*xi_1h, double*xi_2h, double*xi_hm, int flag){
   //Flag specifies how to combine the two terms
   int i;
   if (flag == 0) { //Take the max
@@ -100,7 +96,6 @@ int calc_xi_hm(int Nr, double*xi_1h, double*xi_2h, double*xi_hm, int flag){
       xi_hm[i] = 1 + xi_1h[i] + xi_2h[i];
     }
   }
-  return 0;
 }
 
 int calc_xi_mm(double*r, int Nr, double*k, double*P, int Nk, double*xi, int N, double h){
@@ -109,6 +104,7 @@ int calc_xi_mm(double*r, int Nr, double*k, double*P, int Nk, double*xi, int N, d
   double PI_2 = M_PI*0.5;
   double sum;
   
+  // FIXME - static allocation is not thread-safe
   static int init_flag = 0;
   static gsl_spline*Pspl = NULL;
   static gsl_interp_accel*acc = NULL;
@@ -122,10 +118,12 @@ int calc_xi_mm(double*r, int Nr, double*k, double*P, int Nk, double*xi, int N, d
   
   //Create the spline and accelerator
   if (init_flag == 0){
-      Pspl = gsl_spline_alloc(gsl_interp_cspline, Nk);
-      acc = gsl_interp_accel_alloc();
+    Pspl = gsl_spline_alloc(gsl_interp_cspline, Nk);
+    acc = gsl_interp_accel_alloc();
+    if (!Pspl || !acc)
+      return GSL_ENOMEM;
   }
-  gsl_spline_init(Pspl, k, P, Nk);
+  int rc = gsl_spline_init(Pspl, k, P, Nk);
   
   //Compute things
   if ((init_flag == 0) || (h_old != h) || (N_old < N)){
@@ -163,7 +161,7 @@ int calc_xi_mm(double*r, int Nr, double*k, double*P, int Nk, double*xi, int N, d
     xi[j] = sum/(r[j]*r[j]*r[j]*M_PI*2);
   }
 
-  return 0; //Note: factor of pi picked up in the quadrature rule
+  return rc; //Note: factor of pi picked up in the quadrature rule
   //See Ogata 2005 for details, especially eq. 5.2
 }
 
@@ -207,14 +205,17 @@ int calc_xi_mm_exact(double*r, int Nr, double*k, double*P, int Nk, double*xi){
   double kmin = 5e-8;
   double result, err;
   int i;
-  int status;
 
   gsl_spline*Pspl = gsl_spline_alloc(gsl_interp_cspline, Nk);
   gsl_interp_accel*acc= gsl_interp_accel_alloc();
-  gsl_spline_init(Pspl, k, P, Nk);
+  if (!Pspl || !acc)
+    return GSL_ENOMEM;
+  int rc = gsl_spline_init(Pspl, k, P, Nk);
 
   gsl_integration_workspace*workspace = gsl_integration_workspace_alloc(workspace_size);
   gsl_integration_qawo_table*wf;
+  if (!Pspl || !acc)
+    return GSL_ENOMEM;
 
   integrand_params_xi_mm_exact params;
   params.acc = acc;
@@ -228,18 +229,15 @@ int calc_xi_mm_exact(double*r, int Nr, double*k, double*P, int Nk, double*xi){
 
   wf = gsl_integration_qawo_table_alloc(r[0], kmax-kmin, GSL_INTEG_SINE, (size_t)workspace_num);
   for(i = 0; i < Nr; i++){
-    status = gsl_integration_qawo_table_set(wf, r[i], kmax-kmin, GSL_INTEG_SINE);
-    if (status){
-      printf("Error in calc_xi_mm_exact, first integral.\n");
-      exit(-1);
-    }
+    if (rc)
+      break;
+    rc = gsl_integration_qawo_table_set(wf, r[i], kmax-kmin, GSL_INTEG_SINE);
+    if (rc)
+      break;
+
     params.r=r[i];
-    status = gsl_integration_qawo(&F, kmin, ABSERR, RELERR, (size_t)workspace_num,
+    rc = gsl_integration_qawo(&F, kmin, ABSERR, RELERR, (size_t)workspace_num,
 				  workspace, wf, &result, &err);
-    if (status){
-      printf("Error in calc_xi_mm_exact, second integral.\n");
-      exit(-1);
-    }
 
     xi[i] = result/(M_PI*M_PI*2);
   }
@@ -249,7 +247,7 @@ int calc_xi_mm_exact(double*r, int Nr, double*k, double*P, int Nk, double*xi){
   gsl_integration_workspace_free(workspace);
   gsl_integration_qawo_table_free(wf);
 
-  return 0;
+  return rc;
 }
 
 double xi_mm_at_r_exact(double r, double*k, double*P, int Nk){
@@ -262,7 +260,7 @@ double xi_mm_at_r_exact(double r, double*k, double*P, int Nk){
  * Diemer-Kravtsov 2014 profiles below.
  */
 
-int calc_xi_DK(double*r, int Nr, double M, double rhos, double conc, double be, double se, double alpha, double beta, double gamma, int delta, double*k, double*P, int Nk, double om, double*xi){
+void calc_xi_DK(double*r, int Nr, double M, double rhos, double conc, double be, double se, double alpha, double beta, double gamma, int delta, double*k, double*P, int Nk, double om, double*xi){
   double rhom = rhomconst*om; //SM h^2/Mpc^3
   //Compute rDeltam
   double rdelta = pow(M/(1.33333333333*M_PI*rhom*delta), 0.33333333333);
@@ -297,13 +295,12 @@ int calc_xi_DK(double*r, int Nr, double M, double rhos, double conc, double be, 
   free(rho_ein);
   free(f_trans);
   free(rho_outer);
-  return 0;
 }
 
 //////////////////////////////
 //////Appendix version 1//////
 //////////////////////////////
-int calc_xi_DK_app1(double*r, int Nr, double M, double rhos, double conc, double be, double se, double alpha, double beta, double gamma, int delta, double*k, double*P, int Nk, double om, double bias, double*xi_mm, double*xi){
+void calc_xi_DK_app1(double*r, int Nr, double M, double rhos, double conc, double be, double se, double alpha, double beta, double gamma, int delta, double*k, double*P, int Nk, double om, double bias, double*xi_mm, double*xi){
   double rhom = rhomconst*om; //SM h^2/Mpc^3
   //Compute r200m
   double rdelta = pow(M/(1.33333333333*M_PI*rhom*delta), 0.33333333333);
@@ -339,13 +336,12 @@ int calc_xi_DK_app1(double*r, int Nr, double M, double rhos, double conc, double
   free(rho_ein);
   free(f_trans);
   free(rho_outer);
-  return 0;
 }
 
 //////////////////////////////
 //////Appendix version 2//////
 //////////////////////////////
-int calc_xi_DK_app2(double*r, int Nr, double M, double rhos, double conc, double be, double se, double alpha, double beta, double gamma, int delta, double*k, double*P, int Nk, double om, double bias, double*xi_mm, double*xi){
+void calc_xi_DK_app2(double*r, int Nr, double M, double rhos, double conc, double be, double se, double alpha, double beta, double gamma, int delta, double*k, double*P, int Nk, double om, double bias, double*xi_mm, double*xi){
   double rhom = rhomconst*om; //SM h^2/Mpc^3
   //Compute r200m
   double rdelta = pow(M/(1.33333333333*M_PI*rhom*delta), 0.33333333333);
@@ -381,5 +377,4 @@ int calc_xi_DK_app2(double*r, int Nr, double M, double rhos, double conc, double
   free(rho_ein);
   free(f_trans);
   free(rho_outer);
-  return 0;
 }

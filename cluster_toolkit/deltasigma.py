@@ -2,7 +2,7 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _ArrayWrapper
+from cluster_toolkit import _ArrayWrapper, _handle_gsl_error
 import numpy as np
 
 def Sigma_nfw_at_R(R, mass, concentration, Omega_m, delta=200):
@@ -53,9 +53,12 @@ def Sigma_at_R(R, Rxi, xi, mass, concentration, Omega_m, delta=200):
         raise Exception("Maximum R for Sigma(R) must be <= than max(r) of xi(r).")
 
     Sigma = _ArrayWrapper.zeros_like(R)
-    cluster_toolkit._lib.Sigma_at_R_full_arr(R.cast(), len(R), Rxi.cast(),
-                                             xi.cast(), len(Rxi), mass, concentration,
-                                             delta, Omega_m, Sigma.cast())
+    rc = cluster_toolkit._lib.Sigma_at_R_full_arr(R.cast(), len(R), Rxi.cast(),
+                                                  xi.cast(), len(Rxi), mass, concentration,
+                                                  delta, Omega_m, Sigma.cast())
+
+    _handle_gsl_error(rc, Sigma_at_R)
+
     return Sigma.finish()
 
 def DeltaSigma_at_R(R, Rs, Sigma, mass, concentration, Omega_m, delta=200):
@@ -86,8 +89,11 @@ def DeltaSigma_at_R(R, Rs, Sigma, mass, concentration, Omega_m, delta=200):
                         "<= than max(R) of Sigma(R).")
 
     DeltaSigma = _ArrayWrapper.zeros_like(R)
-    cluster_toolkit._lib.DeltaSigma_at_R_arr(R.cast(), len(R), Rs.cast(),
-                                             Sigma.cast(), len(Rs), mass,
-                                             concentration, delta, Omega_m,
-                                             DeltaSigma.cast())
+    rc = cluster_toolkit._lib.DeltaSigma_at_R_arr(R.cast(), len(R), Rs.cast(),
+                                                  Sigma.cast(), len(Rs), mass,
+                                                  concentration, delta, Omega_m,
+                                                  DeltaSigma.cast())
+
+    _handle_gsl_error(rc, DeltaSigma_at_R)
+
     return DeltaSigma.finish()

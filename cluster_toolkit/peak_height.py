@@ -2,7 +2,7 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _ArrayWrapper
+from cluster_toolkit import _ArrayWrapper, _handle_gsl_error
 import numpy as np
 
 def sigma2_at_M(M, k, P, Omega_m):
@@ -23,7 +23,8 @@ def sigma2_at_M(M, k, P, Omega_m):
     if isinstance(M, list) or isinstance(M, np.ndarray):
         M = _ArrayWrapper(M, allow_multidim=True)
         s2 = _ArrayWrapper.zeros_like(M)
-        cluster_toolkit._lib.sigma2_at_M_arr(M.cast(), len(M), k.cast(), P.cast(), len(k), Omega_m, s2.cast())
+        rc = cluster_toolkit._lib.sigma2_at_M_arr(M.cast(), len(M), k.cast(), P.cast(), len(k), Omega_m, s2.cast())
+        _handle_gsl_error(rc, sigma2_at_M)
         return s2.finish()
     else:
         return cluster_toolkit._lib.sigma2_at_M(M, k.cast(), P.cast(), len(k), Omega_m)
@@ -45,7 +46,8 @@ def sigma2_at_R(R, k, P):
     if isinstance(R, list) or isinstance(R, np.ndarray):
         R = _ArrayWrapper(R)
         s2 = _ArrayWrapper.zeros_like(R)
-        cluster_toolkit._lib.sigma2_at_R_arr(R.cast(), len(R), k.cast(), P.cast(), len(k), s2.cast())
+        rc = cluster_toolkit._lib.sigma2_at_R_arr(R.cast(), len(R), k.cast(), P.cast(), len(k), s2.cast())
+        _handle_gsl_error(rc, sigma2_at_R)
         return s2.finish()
     else:
         return cluster_toolkit._lib.sigma2_at_R(R, k.cast(), P.cast(), len(k))
@@ -115,9 +117,10 @@ def dsigma2dM_at_M(M, k, P, Omega_m):
     if isinstance(M, list) or isinstance(M, np.ndarray):
         M = _ArrayWrapper(M, allow_multidim=True)
         ds2dM = _ArrayWrapper.zeros_like(M)
-        cluster_toolkit._lib.dsigma2dM_at_M_arr(M.cast(), len(M), k.cast(),
-                                                P.cast(), len(k), Omega_m,
-                                                ds2dM.cast())
+        rc = cluster_toolkit._lib.dsigma2dM_at_M_arr(M.cast(), len(M), k.cast(),
+                                                     P.cast(), len(k), Omega_m,
+                                                     ds2dM.cast())
+        _handle_gsl_error(rc, dsigma2dM_at_M)
         return ds2dM.finish()
     else:
         return cluster_toolkit._lib.dsigma2dM_at_M(M, k.cast(), P.cast(),
@@ -143,7 +146,8 @@ def _calc_sigma2_at_M(M, k, P, Omega_m, s2):
     k = _ArrayWrapper(k, allow_multidim=True)
     P = _ArrayWrapper(P, allow_multidim=True)
     s2 = _ArrayWrapper(s2, allow_multidim=True)
-    cluster_toolkit._lib.sigma2_at_M_arr(M.cast(), len(M), k.cast(), P.cast(), len(k), Omega_m, s2.cast())
+    rc = cluster_toolkit._lib.sigma2_at_M_arr(M.cast(), len(M), k.cast(), P.cast(), len(k), Omega_m, s2.cast())
+    _handle_gsl_error(rc, _calc_sigma2_at_M)
 
 def _calc_nu_at_R(R, k, P, nu):
     """Direct call to vectorized version of peak height of R.
@@ -153,7 +157,8 @@ def _calc_nu_at_R(R, k, P, nu):
     k = _ArrayWrapper(k, allow_multidim=True)
     P = _ArrayWrapper(P, allow_multidim=True)
     nu = _ArrayWrapper(nu, allow_multidim=True)
-    cluster_toolkit._lib.nu_at_R_arr(R.cast(), len(R), k.cast(), P.cast(), len(k), nu.cast())
+    rc = cluster_toolkit._lib.nu_at_R_arr(R.cast(), len(R), k.cast(), P.cast(), len(k), nu.cast())
+    _handle_gsl_error(rc, _calc_nu_at_R)
 
 def _calc_nu_at_M(M, k, P, Omega_m, nu):
     """Direct call to vectorized version of peak height of M.
@@ -163,4 +168,5 @@ def _calc_nu_at_M(M, k, P, Omega_m, nu):
     k = _ArrayWrapper(k, allow_multidim=True)
     P = _ArrayWrapper(P, allow_multidim=True)
     nu = _ArrayWrapper(nu, allow_multidim=True)
-    cluster_toolkit._lib.nu_at_M_arr(M.cast(), len(M), k.cast(), P.cast(), len(k), Omega_m, nu.cast())
+    rc = cluster_toolkit._lib.nu_at_M_arr(M.cast(), len(M), k.cast(), P.cast(), len(k), Omega_m, nu.cast())
+    _handle_gsl_error(rc, _calc_nu_at_M)

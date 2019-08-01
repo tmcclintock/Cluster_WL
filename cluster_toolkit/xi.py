@@ -2,7 +2,7 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _ArrayWrapper
+from cluster_toolkit import _ArrayWrapper, _handle_gsl_error
 import numpy as np
 
 def xi_nfw_at_r(r, M, c, Omega_m, delta=200):
@@ -70,15 +70,17 @@ def xi_mm_at_r(r, k, P, N=500, step=0.005, exact=False):
 
     xi = _ArrayWrapper.zeros_like(r)
     if not exact:
-        cluster_toolkit._lib.calc_xi_mm(r.cast(), len(r), k.cast(),
-                                        P.cast(), len(k), xi.cast(),
-                                        N, step)
+        rc = cluster_toolkit._lib.calc_xi_mm(r.cast(), len(r), k.cast(),
+                                             P.cast(), len(k), xi.cast(),
+                                             N, step)
+        _handle_gsl_error(rc, xi_mm_at_r)
     else:
         if r.arr.max() > 1e3:
             raise Exception("max(r) cannot be >1e3 for numerical stability.")
-        cluster_toolkit._lib.calc_xi_mm_exact(r.cast(), len(r),
-                                              k.cast(), P.cast(),
-                                              len(k), xi.cast())
+        rc = cluster_toolkit._lib.calc_xi_mm_exact(r.cast(), len(r),
+                                                   k.cast(), P.cast(),
+                                                   len(k), xi.cast())
+        _handle_gsl_error(rc, xi_mm_at_r)
 
     return xi.finish()
 

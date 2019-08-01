@@ -2,7 +2,7 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _ArrayWrapper
+from cluster_toolkit import _ArrayWrapper, _handle_gsl_error
 import numpy as np
 
 
@@ -35,10 +35,13 @@ def average_profile_in_bins(Redges, R, prof):
         raise Exception("Maximum edge must be <= maximum R")
 
     ave_prof = _ArrayWrapper(np.zeros(len(Redges) - 1))
-    cluster_toolkit._lib.average_profile_in_bins(Redges.cast(), len(Redges),
-                                                 R.cast(), len(R),
-                                                 prof.cast(),
-                                                 ave_prof.cast())
+    r = cluster_toolkit._lib.average_profile_in_bins(Redges.cast(), len(Redges),
+                                                     R.cast(), len(R),
+                                                     prof.cast(),
+                                                     ave_prof.cast())
+
+    _handle_gsl_error(r, average_profile_in_bins)
+
     return ave_prof.finish()
 
 

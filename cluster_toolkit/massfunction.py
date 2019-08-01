@@ -2,7 +2,7 @@
 """
 
 import cluster_toolkit
-from cluster_toolkit import _ArrayWrapper
+from cluster_toolkit import _ArrayWrapper, _handle_gsl_error
 import numpy as np
 
 def dndM_at_M(M, k, P, Omega_m, d=1.97, e=1.0, f=0.51, g=1.228):
@@ -107,9 +107,10 @@ def n_in_bins(edges, Marr, dndM):
     n = _ArrayWrapper.zeros(len(edges)-1)
     Marr = _ArrayWrapper(Marr, 'Marr')
     dndM = _ArrayWrapper(dndM, 'dndM')
-    cluster_toolkit._lib.n_in_bins(edges.cast(), len(edges),
+    rc = cluster_toolkit._lib.n_in_bins(edges.cast(), len(edges),
                                    Marr.cast(), dndM.cast(), len(Marr),
                                    n.cast())
+    _handle_gsl_error(rc, n_in_bins)
     return n.finish()
 
 def n_in_bin(Mlo, Mhi, Marr, dndM):

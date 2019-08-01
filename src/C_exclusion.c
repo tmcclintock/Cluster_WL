@@ -22,7 +22,7 @@
 #define rm_min 0.0001 //Mpc/h minimum of the radial splines
 #define rm_max 10000. //Mpc/h maximum of the radial splines
 
-int xi_hm_exclusion_at_r_arr(double*r, int Nr,
+void xi_hm_exclusion_at_r_arr(double*r, int Nr,
 			    double M, double c, double alpha,
 			    double rt, double D,
 			    double r_eff, double D_eff,
@@ -43,10 +43,9 @@ int xi_hm_exclusion_at_r_arr(double*r, int Nr,
   free(xi_1h);
   free(xi_2h);
   free(xi_C);
-  return 0;
 }
 
-int xi_1h_at_r_arr(double*r, int Nr, double M, double c, double alpha,
+void xi_1h_at_r_arr(double*r, int Nr, double M, double c, double alpha,
 		   double rt, double D, int delta, double Omega_m,
 		   double*xi_1h){
   int i;
@@ -57,10 +56,9 @@ int xi_1h_at_r_arr(double*r, int Nr, double M, double c, double alpha,
     xi_1h[i] = (1+xi_1h[i]) * theta[i];
   }
   free(theta);
-  return 0; //success
 }
 
-int xi_2h_at_r_arr(double*r, int Nr, double r_eff, double D_eff,
+void xi_2h_at_r_arr(double*r, int Nr, double r_eff, double D_eff,
 		   double bias, double*ximm, double*xi2h){
   int i;
   double*theta_eff  = malloc(sizeof(double)*Nr);
@@ -69,10 +67,9 @@ int xi_2h_at_r_arr(double*r, int Nr, double r_eff, double D_eff,
     xi2h[i] = (1-theta_eff[i]) * bias * ximm[i];
   }
   free(theta_eff);
-  return 0;
 }
 
-int xi_C_at_r_arr(double*r, int Nr, double r_A, double r_B, double D,
+void xi_C_at_r_arr(double*r, int Nr, double r_A, double r_B, double D,
 		  double*xi_2h, double*xi_C){
   int i;
   double*theta_A  = malloc(sizeof(double)*Nr);
@@ -84,7 +81,6 @@ int xi_C_at_r_arr(double*r, int Nr, double r_A, double r_B, double D,
   }
   free(theta_A);
   free(theta_B);
-  return 0;
 }
 
 
@@ -97,9 +93,14 @@ int theta_erfc_at_r_arr(double*r, int Nr, double rt, double D,
   int i;
   double invD_rt = 1./(D*rt);
   for(i = 0; i < Nr; i++){
-    theta[i] = 0.5*gsl_sf_erfc((r[i]-rt) * invD_rt * invsqrt2);
+    gsl_sf_result erf_result;
+    int rc = gsl_sf_erfc_e((r[i]-rt) * invD_rt * invsqrt2,
+                           &erf_result);
+    if (rc != GSL_SUCCESS)
+      return rc;
+    theta[i] = 0.5*erf_result.val;
   }
-  return 0;
+  return GSL_SUCCESS;
 }
 
 ///////////////////////////////////

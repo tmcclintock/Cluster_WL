@@ -1,6 +1,7 @@
 #include "C_peak_height.h"
 #include "C_power.h"
 
+#include "gsl/gsl_errno.h"
 #include "gsl/gsl_integration.h"
 #include "gsl/gsl_spline.h"
 
@@ -86,14 +87,20 @@ int sigma2_at_R_arr(double*R, int NR,  double*k, double*P, int Nk, double*s2){
   gsl_spline*spline = gsl_spline_alloc(gsl_interp_cspline,Nk);
   gsl_interp_accel*acc = gsl_interp_accel_alloc();
   gsl_integration_workspace*workspace = gsl_integration_workspace_alloc(workspace_size);
+
+  // Handle allocation failure
+  if (!spline || !acc || !workspace)
+      return GSL_ENOMEM;
+
   gsl_function F;
   integrand_params params;
   double lkmin = log(k[0]);
   double lkmax = log(k[Nk-1]);
   double result,abserr;
   double denom_inv = 1./(2*M_PI*M_PI);
-  int i;
-  gsl_spline_init(spline,k,P,Nk);
+  int i, rc;
+
+  rc = gsl_spline_init(spline,k,P,Nk);
   params.spline = spline;
   params.acc = acc;
   params.kp = k;
@@ -101,16 +108,19 @@ int sigma2_at_R_arr(double*R, int NR,  double*k, double*P, int Nk, double*s2){
   params.Nk = Nk;
   F.function = &sigma2_integrand;
   F.params = &params;
+
   for(i = 0; i < NR; i++){
+    if (rc != GSL_SUCCESS)
+      break;
     params.r = R[i];
-    gsl_integration_qag(&F, lkmin, lkmax, ABSERR, RELERR,
+    rc = gsl_integration_qag(&F, lkmin, lkmax, ABSERR, RELERR,
 			workspace_size, KEY, workspace, &result, &abserr);
     s2[i] = result * denom_inv; //divide by 2pi^2
   }
   gsl_spline_free(spline);
   gsl_interp_accel_free(acc);
   gsl_integration_workspace_free(workspace);
-  return 0;
+  return rc;
 }
 
 int sigma2_at_M_arr(double*M, int NM,  double*k, double*P, int Nk,
@@ -120,9 +130,9 @@ int sigma2_at_M_arr(double*M, int NM,  double*k, double*P, int Nk,
   for(i = 0; i < NM; i++){
     R[i] = M_to_R(M[i], Omega_m);
   }
-  sigma2_at_R_arr(R, NM, k, P, Nk, s2);
+  int rc = sigma2_at_R_arr(R, NM, k, P, Nk, s2);
   free(R);
-  return 0;
+  return rc;
 }
 
 /* The derivative with respect to R of sigma^2. This is needed for the mass
@@ -134,6 +144,9 @@ int dsigma2dR_at_R_arr(double*R, int NR, double*k, double*P, int Nk,
   gsl_spline*spline = gsl_spline_alloc(gsl_interp_cspline,Nk);
   gsl_interp_accel*acc = gsl_interp_accel_alloc();
   gsl_integration_workspace*workspace = gsl_integration_workspace_alloc(workspace_size);
+  if (!spline || !acc || !workspace)
+    return GSL_ENOMEM;
+
   gsl_function F;
   integrand_params params;
   double lkmin = log(k[0]);
@@ -143,8 +156,9 @@ int dsigma2dR_at_R_arr(double*R, int NR, double*k, double*P, int Nk,
   //out of the integrand because we take dw^2/dR
   //We also pull a factor of 3 out of the integrand.
   double denom_inv = 1./(M_PI*M_PI);
-  int i;
-  gsl_spline_init(spline,k,P,Nk);
+  int i, rc;
+
+  rc = gsl_spline_init(spline,k,P,Nk);
   params.spline = spline;
   params.acc = acc;
   params.kp = k;
@@ -153,15 +167,18 @@ int dsigma2dR_at_R_arr(double*R, int NR, double*k, double*P, int Nk,
   F.function = &dsigma2dR_integrand;
   F.params = &params;
   for(i = 0; i < NR; i++){
+    if (rc != GSL_SUCCESS)
+      break;
     params.r = R[i];
-    gsl_integration_qag(&F, lkmin, lkmax, ABSERR, RELERR,
+    rc = gsl_integration_qag(&F, lkmin, lkmax, ABSERR, RELERR,
 			workspace_size, KEY, workspace, &result, &abserr);
     ds2dR[i] = result * denom_inv; //divide by 2pi^2
   }
   gsl_spline_free(spline);
   gsl_interp_accel_free(acc);
   gsl_integration_workspace_free(workspace);
-  return 0;
+
+  return rc;
 }
 
 double dsigma2dR_at_R(double R, double*k, double*P, int Nk){
@@ -184,14 +201,14 @@ int dsigma2dM_at_M_arr(double*M, int NM, double*k, double*P, int Nk,
     dRdM[i] = dRdM_at_M(M[i], Omega_m);
   }
   //Note: ds2dM holds ds2dR for now
-  dsigma2dR_at_R_arr(R, NM, k, P, Nk, ds2dM);
+  int rc = dsigma2dR_at_R_arr(R, NM, k, P, Nk, ds2dM);
   //Chain rule to convert dsigma2dR to dsigma2dM
   for(i = 0; i < NM; i++){
     ds2dM[i] = ds2dM[i] * dRdM[i];
   }
   free(R);
   free(dRdM);
-  return 0;
+  return rc;
 }
 
 double dsigma2dM_at_M(double M, double*k, double*P, int Nk, double Omega_m){
@@ -217,12 +234,12 @@ int nu_at_R_arr(double*R, int NR, double*k, double*P, int Nk, double*nu){
   //peak height at an array of R
   int i;
   double*s2 = (double*)malloc(sizeof(double)*NR);
-  sigma2_at_R_arr(R, NR, k, P, Nk, s2);
+  int rc = sigma2_at_R_arr(R, NR, k, P, Nk, s2);
   for(i = 0; i < NR; i++){
     nu[i] = delta_c/sqrt(s2[i]);
   }
   free(s2);
-  return 0;
+  return rc;
 }
 
 int nu_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, double*nu){
@@ -232,7 +249,7 @@ int nu_at_M_arr(double*M, int NM, double*k, double*P, int Nk, double om, double*
   for(i = 0; i < NM; i++){
     R[i] = M_to_R(M[i], om);
   }
-  nu_at_R_arr(R, NM, k, P, Nk, nu);
+  int rc = nu_at_R_arr(R, NM, k, P, Nk, nu);
   free(R);
-  return 0;
+  return rc;
 }
