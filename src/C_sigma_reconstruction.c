@@ -35,12 +35,13 @@ int Sigma_REC_from_DeltaSigma(double dlnR, double*DeltaSigma, int N,
     1/2s on the edges and 1s in the middle)
    */
   //Loop over Sigma elements; i.e. rows
-  for(int i = 0; i < N-1; i++){
+  int i, j;
+  for(i = 0; i < N-1; i++){
     Sigma[i] = -DeltaSigma[i]; //Not sure if this is positive or negative
     
     //Loop over DeltaSigma elements; i.e. columns
-    //for(int j = N-2-i; j < N; j++){
-    for(int j = i; j < N; j++){
+    //for(j = N-2-i; j < N; j++){
+    for(j = i; j < N; j++){
       Sigma[i] -= 2*dlnR*DeltaSigma[j];
       //Downweight the first and last contributions (midpoint formula)
       //if ((j == N-2-i) || (j == N-1)){

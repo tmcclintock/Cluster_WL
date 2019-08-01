@@ -52,7 +52,8 @@ int average_profile_in_bins(double*Redges, int Nedges, double*R, int NR,
   F.function = &ave_integrand;
 
   //Loop over bins and compute the average
-  for(int i = 0; i < Nedges-1; i++){
+  int i;
+  for(i = 0; i < Nedges-1; i++){
     gsl_integration_qag(&F, log(Redges[i]), log(Redges[i+1]), ABSERR, RELERR,
 			workspace_size, 6, ws, &result, &err);
     ave_profile[i] = 2*result/(Redges[i+1]*Redges[i+1]-Redges[i]*Redges[i]);
