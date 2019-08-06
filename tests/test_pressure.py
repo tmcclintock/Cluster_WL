@@ -136,8 +136,8 @@ def test_inverse_fourier():
     halo = pp.BBPSProfile(M, z, omega_b, omega_m)
 
     # Create our real and Fourier space evaluation grids
-    rs = np.exp(np.linspace(np.log(0.01), np.log(15), 100))
-    ks = np.exp(np.linspace(np.log(0.01), np.log(1000), 1000))
+    rs = np.geomspace(0.01, 15, 100)
+    ks = np.geomspace(0.01, 1000, 1000)
 
     true_pressure = halo.pressure(rs)
 
@@ -211,8 +211,8 @@ def test_convolution_convergence():
 @pytest.mark.skip(reason='plots')
 def test_2halo():
     cosmo = get_cosmology(0)
-    rs = np.linspace(0.1, 10, 20)
-    ks = np.exp(np.linspace(np.log(0.1), np.log(20), 100))
+    rs = np.geomspace(0.1, 10, 20)
+    ks = np.geomspace(0.1, 20, 100)
     z = 0.2
     two_halo = pp.BBPSProfile.two_halo(rs, ks, z,
                                        cosmo['omega_b'], cosmo['omega_m'],
