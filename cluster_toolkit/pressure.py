@@ -166,7 +166,7 @@ def integrate_spline(xs, ys, a, b):
                                a, b, _dcast(f_out))
 
     if rc != 0:
-        msg = 'inv_spherical_fourier_transform returned error code: {}'
+        msg = 'integrate_spline returned error code: {}'
         raise RuntimeError(msg.format(rc))
     return f_out[()]
 
@@ -666,8 +666,8 @@ class BBPSProfile:
 
         Mmin = max(hmb_m.min(), hmf_m.min())
         Mmax = min(hmb_m.max(), hmf_m.max())
-        lnMs = np.linspace(np.log(Mmin), np.log(Mmax), nM)
-        Ms = np.exp(lnMs)
+        Ms = np.geomspace(Mmin, Mmax, nM)
+        lnMs = np.log(Ms)
 
         # Precompute the FFT'd pressure profile
         up = []
