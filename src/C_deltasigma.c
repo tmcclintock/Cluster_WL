@@ -134,7 +134,6 @@ double integrand_large_scales(double lRz, void*params){
  * Note: all distances are comoving.
  */
 int Sigma_at_R_arr(double*R, int NR, double*Rxi, double*xi, int Nxi, double M, double conc, int delta, double om, double*Sigma){
-  gsl_set_error_handler_off();
   double rhom = om*rhocrit*1e-12; //SM h^2/pc^2/Mpc; integral is over Mpc/h
   double Rxi0 = Rxi[0];
   double Rxi_max = Rxi[Nxi-1];

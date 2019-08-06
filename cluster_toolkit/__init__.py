@@ -29,7 +29,9 @@ _ffi = cffi.FFI()
 for file_name in glob.glob(os.path.join(include_dir, '*.h')):
     _ffi.cdef(open(file_name).read())
 _ffi.cdef('const char * gsl_strerror(const int gsl_errno);')
+
 _lib = _ffi.dlopen(lib_file)
+_lib.gsl_set_error_handler_off()
 
 
 def _handle_gsl_error(err, fn):
