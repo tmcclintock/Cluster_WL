@@ -134,10 +134,12 @@ def inverse_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
     f_out = np.zeros_like(rs, dtype=np.double)
     f_err_out = np.zeros_like(rs, dtype=np.double)
 
-    rc = _lib.inverse_spherical_fourier_transform(_dcast(f_out), _dcast(f_err_out),
-                                              _dcast(rs), len(rs),
-                                              _dcast(ks), _dcast(Fs), len(Fs),
-                                              limit, epsabs)
+    rc = _lib.inverse_spherical_fourier_transform(_dcast(f_out),
+                                                  _dcast(f_err_out),
+                                                  _dcast(rs), len(rs),
+                                                  _dcast(ks), _dcast(Fs),
+                                                  len(Fs),
+                                                  limit, epsabs)
 
     if rc != 0:
         msg = 'inverse_spherical_fourier_transform returned error code: {}'
@@ -152,14 +154,14 @@ def inverse_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
     return f_out
 
 
-def forward_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
+def forward_spherical_fourier_transform(ks, rs, fs, limit=1000, epsabs=1e-21,
                                         return_errs=False):
     '''
-    Inverse spherical fourier transform of a spectrum F(k), evaluated at a grid
-    of radius values r. The spectrum F(k) is given at discrete points and
+    Forward spherical fourier transform of a spectrum f(r), evaluated at a grid
+    of radius values k. The profile f(r) is given at discrete points and
     interpolated.
 
-    :math:`f(r) = \\frac{1}{2 \\pi^2 r} \\int_0^\\infty dk sin(kr) k F(k)`
+    :math:`f(r) = 4\\pi^2 \\int_0^\\infty dr sin(kr)/(kr) r^2 f(r)`
 
     Note:
         The above integral over :math:`k` is done using a GSL integration
@@ -169,25 +171,26 @@ def forward_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
         may not converge.
 
     Args:
-        rs (array): The radii at which to compute the forward Fourier transform.
-        ks (array): Grid of angular frequencies `k` that the spectrum `F(k)` is
+        ks (array): The wavenumbers at which to compute the forward Fourier
+                    transform.
+        rs (array): Grid of radii `r` that the spectrum `f(r)` is
                     evaluated at.
-        Fs (array): The spectrum `F(k)`, used for interpolation. Must be of
-                    the same size as `ks`.
+        fs (array): The spectrum `f(r)`, used for interpolation. Must be of
+                    the same size as `rs`.
         limit (int): Number of subdivisions to use for integration
                      algorithm.
         epsabs (float): Absolute allowable error for integration.
 
     Returns:
-        (array): The forward-Fourier transformed profile `f(r)`. The same \
-                 shape as `rs`.
+        (array): The forward-Fourier transformed profile `F(k)`. The same \
+                 shape as `ks`.
     '''
     rs = np.asarray(rs, dtype=np.double)
     ks = np.asarray(ks, dtype=np.double)
-    Fs = np.asarray(Fs, dtype=np.double)
+    fs = np.asarray(fs, dtype=np.double)
 
-    if ks.shape != Fs.shape:
-        raise ValueError('ks and Fs must be the same shape')
+    if rs.shape != fs.shape:
+        raise ValueError('rs and Fs must be the same shape')
 
     scalar_input = False
     if rs.ndim == 0:
@@ -197,12 +200,14 @@ def forward_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
     if rs.ndim > 1:
         raise Exception('rs cannot be a >1D array.')
 
-    f_out = np.zeros_like(rs, dtype=np.double)
-    f_err_out = np.zeros_like(rs, dtype=np.double)
+    f_out = np.zeros_like(ks, dtype=np.double)
+    f_err_out = np.zeros_like(ks, dtype=np.double)
 
-    rc = _lib.forward_spherical_fourier_transform(_dcast(f_out), _dcast(f_err_out),
-                                                  _dcast(rs), len(rs),
-                                                  _dcast(ks), _dcast(Fs), len(Fs),
+    rc = _lib.forward_spherical_fourier_transform(_dcast(f_out),
+                                                  _dcast(f_err_out),
+                                                  _dcast(ks), len(ks),
+                                                  _dcast(rs), _dcast(fs),
+                                                  len(fs),
                                                   limit, epsabs)
 
     if rc != 0:
@@ -712,8 +717,8 @@ class BBPSProfile:
 
         Ps = P_lin(ks, z)
         radial_term = inverse_spherical_fourier_transform(rs, ks, Ps * igrnds,
-                                                      limit=limit,
-                                                      epsabs=epsabs)
+                                                          limit=limit,
+                                                          epsabs=epsabs)
 
         # TODO - mass bias
         return radial_term
@@ -723,24 +728,19 @@ class BBPSProfile:
                                 omega_b, omega_m,
                                 hmb_m, hmb_z, hmb_b,
                                 hmf_m, hmf_z, hmf_f,
-                                nr=1000, nM=1000):
+                                nr=1000, nM=1000,
+                                limit=1000, epsabs=1e-21):
         '''
         A mass-weighted pressure profile, in Fourier space.
         '''
-        rs = np.geomspace(1 / ks.max(), 1 / ks.min(), nr)
-        mass_weighted = cls.mass_weighted_profile(cls, rs, z, omega_b, omega_m,
+        rs = np.geomspace(1 / ks.max(), 2 * np.pi / ks.min(), nr)
+        mass_weighted = cls.mass_weighted_profile(rs, z, omega_b, omega_m,
                                                   hmb_m, hmb_z, hmb_b,
                                                   hmf_m, hmf_z, hmf_f,
                                                   nM=nM)
 
-        # Now, fourier transform
-        up = []
-        for M in Ms:
-            halo = cls(M, z, omega_b, omega_m)
-            up.append(halo._C_fourier_pressure(ks))
-        up = np.array(up)
-
-        return results
+        return forward_spherical_fourier_transform(ks, rs, mass_weighted,
+                                                   limit=limit, epsabs=epsabs)
 
     @classmethod
     def mass_weighted_profile(cls, rs, z, omega_b, omega_m,
