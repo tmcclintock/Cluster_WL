@@ -144,12 +144,26 @@ def test_inverse_fourier():
     # Convert the pressure profile to Fourier space, and back again
     Fs = halo._C_fourier_pressure(ks)
     epsabs = halo.pressure(halo.R_delta * 2)
-    ifft_pressure = pp.inv_spherical_fourier_transform(rs, ks, Fs,
-                                                       epsabs=epsabs)
+    ifft_pressure = pp.inverse_spherical_fourier_transform(rs, ks, Fs,
+                                                           epsabs=epsabs)
 
     # Check that the answer is right
     diff = np.abs(true_pressure - ifft_pressure)
     passes = ((diff / true_pressure) < 1e-1) | (diff < epsabs)
+    assert np.all(passes)
+
+
+def test_two_way_fourier():
+    rs = np.geomspace(0.1, 5, 75)
+    real = np.exp(-rs*rs / 2)
+    ks = np.geomspace(1 / (5 * 2 * np.pi), 20, 75)
+
+    epsabs = 1e-3
+    ftd = pp.forward_spherical_fourier_transform(ks, rs, real, epsabs=epsabs)
+    back = pp.inverse_spherical_fourier_transform(rs, ks, ftd, epsabs=epsabs)
+
+    diff = np.abs(real - back)
+    passes = ((diff / real) < 1e-2) | (diff < epsabs)
     assert np.all(passes)
 
 

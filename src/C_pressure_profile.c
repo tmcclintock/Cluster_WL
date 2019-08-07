@@ -189,12 +189,13 @@ fourier_P_BBPS(double *up_out, double *up_err_out,
 }
 
 
-/// Performs an inverse fourier-transform on the function specified in
+/// Performs an inverse fourier-transform on the function F(k)
+/// specified in the table of ks and Fs
 int
-inv_spherical_fourier_transform(double *out, double *out_err,
-                                const double *rs, unsigned Nr,
-                                const double *ks, const double *Fs, unsigned Nk,
-                                unsigned limit, double epsabs)
+inverse_spherical_fourier_transform(double *out, double *out_err,
+                                    const double *rs, unsigned Nr,
+                                    const double *ks, const double *Fs, unsigned Nk,
+                                    unsigned limit, double epsabs)
 {
     gsl_interp *F_interp = gsl_interp_alloc(gsl_interp_linear, Nk);
     if (!F_interp)
@@ -209,11 +210,12 @@ inv_spherical_fourier_transform(double *out, double *out_err,
     {
         double F = 0.0;
         int retcode = gsl_interp_eval_e(F_interp, ks, Fs, k, NULL, &F);
-        // TODO - if we are out of the interpolation range, we return 0.
-        // Is this the right thing to do? We should try other methods and see
-        // the effects
-        if (retcode == GSL_EDOM)
+        if (retcode == GSL_EDOM) {
+            // If below minimum - we return F(k_min)
+            if (k < ks[0])
+                return Fs[0];
             return 0.0;
+        }
         return F;
     }
 
@@ -237,6 +239,61 @@ inv_spherical_fourier_transform(double *out, double *out_err,
     }
 
     gsl_interp_free(F_interp);
+    return rc;
+}
+
+
+
+/// Performs a forward fourier-transform on the function f(r)
+/// specified in the table of rs and fs
+int
+forward_spherical_fourier_transform(double *out, double *out_err,
+                                    const double *ks, unsigned Nk,
+                                    const double *rs, const double *fs, unsigned Nr,
+                                    unsigned limit, double epsabs)
+{
+    gsl_interp *f_interp = gsl_interp_alloc(gsl_interp_linear, Nr);
+    if (!f_interp)
+        return GSL_ENOMEM;
+
+    int rc = gsl_interp_init(f_interp, rs, fs, Nr);
+    if (rc != GSL_SUCCESS)
+        return rc;
+
+    double
+    integrand(double r, void *params)
+    {
+        double f = 0.0;
+        int retcode = gsl_interp_eval_e(f_interp, rs, fs, r, NULL, &f);
+        if (retcode == GSL_EDOM) {
+            // If below minimum - we return f(r_min)
+            if (r < rs[0])
+                return fs[0];
+            return 0.0;
+        }
+        return f;
+    }
+
+    gsl_function f_r;
+    f_r.params = NULL;
+    f_r.function = integrand;
+
+    rc = spherical_fourier_transform(out, out_err,
+                                     ks, Nk,
+                                     &f_r,
+                                     limit, epsabs / (4 * M_PI));
+
+    if (rc == GSL_SUCCESS) {
+        // Apply normalization for reverse Fourier transform
+        // (See comment above spherical_fourier_transform)
+        for (unsigned i = 0; i < Nk; i++) {
+            out[i] *= 4 * M_PI;
+            if (out_err)
+                out_err[i] *= 4 * M_PI;
+        }
+    }
+
+    gsl_interp_free(f_interp);
     return rc;
 }
 

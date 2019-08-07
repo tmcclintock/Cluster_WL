@@ -86,8 +86,8 @@ def P_delta(M, z, omega_b, omega_m, delta=200):
         (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, delta))
 
 
-def inv_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
-                                    return_errs=False):
+def inverse_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
+                                        return_errs=False):
     '''
     Inverse spherical fourier transform of a spectrum F(k), evaluated at a grid
     of radius values r. The spectrum F(k) is given at discrete points and
@@ -134,13 +134,79 @@ def inv_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
     f_out = np.zeros_like(rs, dtype=np.double)
     f_err_out = np.zeros_like(rs, dtype=np.double)
 
-    rc = _lib.inv_spherical_fourier_transform(_dcast(f_out), _dcast(f_err_out),
+    rc = _lib.inverse_spherical_fourier_transform(_dcast(f_out), _dcast(f_err_out),
                                               _dcast(rs), len(rs),
                                               _dcast(ks), _dcast(Fs), len(Fs),
                                               limit, epsabs)
 
     if rc != 0:
-        msg = 'inv_spherical_fourier_transform returned error code: {}'
+        msg = 'inverse_spherical_fourier_transform returned error code: {}'
+        raise RuntimeError(msg.format(rc))
+
+    if scalar_input:
+        if return_errs:
+            return np.squeeze(f_out), np.squeeze(f_err_out)
+        return np.squeeze(f_out)
+    if return_errs:
+        return f_out, f_err_out
+    return f_out
+
+
+def forward_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
+                                        return_errs=False):
+    '''
+    Inverse spherical fourier transform of a spectrum F(k), evaluated at a grid
+    of radius values r. The spectrum F(k) is given at discrete points and
+    interpolated.
+
+    :math:`f(r) = \\frac{1}{2 \\pi^2 r} \\int_0^\\infty dk sin(kr) k F(k)`
+
+    Note:
+        The above integral over :math:`k` is done using a GSL integration
+        routine. This means, however, that if the integrand is not
+        well-behaved (i.e. Fs = 0 except at a single `k` value, or if `F` is
+        singular) the integration routine may not locate the singularity, or it
+        may not converge.
+
+    Args:
+        rs (array): The radii at which to compute the forward Fourier transform.
+        ks (array): Grid of angular frequencies `k` that the spectrum `F(k)` is
+                    evaluated at.
+        Fs (array): The spectrum `F(k)`, used for interpolation. Must be of
+                    the same size as `ks`.
+        limit (int): Number of subdivisions to use for integration
+                     algorithm.
+        epsabs (float): Absolute allowable error for integration.
+
+    Returns:
+        (array): The forward-Fourier transformed profile `f(r)`. The same \
+                 shape as `rs`.
+    '''
+    rs = np.asarray(rs, dtype=np.double)
+    ks = np.asarray(ks, dtype=np.double)
+    Fs = np.asarray(Fs, dtype=np.double)
+
+    if ks.shape != Fs.shape:
+        raise ValueError('ks and Fs must be the same shape')
+
+    scalar_input = False
+    if rs.ndim == 0:
+        scalar_input = True
+        # Convert r to 2d
+        rs = rs[None]
+    if rs.ndim > 1:
+        raise Exception('rs cannot be a >1D array.')
+
+    f_out = np.zeros_like(rs, dtype=np.double)
+    f_err_out = np.zeros_like(rs, dtype=np.double)
+
+    rc = _lib.forward_spherical_fourier_transform(_dcast(f_out), _dcast(f_err_out),
+                                                  _dcast(rs), len(rs),
+                                                  _dcast(ks), _dcast(Fs), len(Fs),
+                                                  limit, epsabs)
+
+    if rc != 0:
+        msg = 'forward_spherical_fourier_transform returned error code: {}'
         raise RuntimeError(msg.format(rc))
 
     if scalar_input:
@@ -645,7 +711,7 @@ class BBPSProfile:
         # k_min, k_max = P_lin_k.min(), P_lin_k.max()
 
         Ps = P_lin(ks, z)
-        radial_term = inv_spherical_fourier_transform(rs, ks, Ps * igrnds,
+        radial_term = inverse_spherical_fourier_transform(rs, ks, Ps * igrnds,
                                                       limit=limit,
                                                       epsabs=epsabs)
 
@@ -657,32 +723,77 @@ class BBPSProfile:
                                 omega_b, omega_m,
                                 hmb_m, hmb_z, hmb_b,
                                 hmf_m, hmf_z, hmf_f,
-                                nM=1000):
+                                nr=1000, nM=1000):
         '''
         A mass-weighted pressure profile, in Fourier space.
         '''
-        hmb = interp2d(hmb_m, hmb_z, hmb_b)
-        hmf = interp2d(hmf_m, hmf_z, hmf_f)
+        rs = np.geomspace(1 / ks.max(), 1 / ks.min(), nr)
+        mass_weighted = cls.mass_weighted_profile(cls, rs, z, omega_b, omega_m,
+                                                  hmb_m, hmb_z, hmb_b,
+                                                  hmf_m, hmf_z, hmf_f,
+                                                  nM=nM)
 
-        Mmin = max(hmb_m.min(), hmf_m.min())
-        Mmax = min(hmb_m.max(), hmf_m.max())
-        Ms = np.geomspace(Mmin, Mmax, nM)
-        lnMs = np.log(Ms)
-
-        # Precompute the FFT'd pressure profile
+        # Now, fourier transform
         up = []
         for M in Ms:
             halo = cls(M, z, omega_b, omega_m)
             up.append(halo._C_fourier_pressure(ks))
         up = np.array(up)
 
-        # Integrate over lnM - so f(M) * dM -> f(M) * M * d(lnM)
-        results = np.zeros_like(ks, dtype=np.double)
-        for ki, k in enumerate(ks):
-            igrnd = Ms * hmf(Ms, z) * hmb(Ms, z) * up[:, ki]
-            results[ki] = integrate_spline(lnMs, igrnd, lnMs[0], lnMs[-1])
-
         return results
+
+    @classmethod
+    def mass_weighted_profile(cls, rs, z, omega_b, omega_m,
+                              hmb_m, hmb_z, hmb_b,
+                              hmf_m, hmf_z, hmf_f,
+                              nM=1000):
+        '''
+        Computes the mass weighted pressure profile:
+
+        :math:`P_{mean}(r | z) = \int dM dn/dM b(M) P(r | M, z)`
+
+        Args:
+            rs (array): The radii at which to compute the mean pressure.
+            omega_b (float): Baryon fraction.
+            omega_m (float): Matter fraction.
+            hmb_m (1d array): The mass points at which the halo mass bias is \
+                              evaluated. Units: :math:`M_{sun}`.
+            hmb_z (1d array): The redshifts at which the halo mass bias is \
+                              evaluated.
+            hmb_b (2d array): The evaluated halo mass bias, for each (m, z) \
+                              combination.
+            hmf_m (1d array): The mass points at which the halo mass function \
+                              is evaluated. Units: :math:`M_{sun}`.
+            hmf_z (1d array): The redshifts at which the halo mass function is \
+                              evaluated.
+            hmf_f (2d array): The evaluated halo mass function, for each \
+                              (m, z) combination.
+
+        Returns:
+            (array): Mean pressure for each r.
+        '''
+        hmb = interp2d(hmb_m, hmb_z, hmb_b)
+        hmf = interp2d(hmf_m, hmf_z, hmf_f)
+
+        Mmin = max(hmb_m.min(), hmf_m.min())
+        Mmax = min(hmb_m.max(), hmf_m.max())
+        # nM = max(hmf_m.size, hmb_m.size, nM)
+
+        Ms = np.geomspace(Mmin, Mmax, nM)
+        lnMs = np.log(Ms)
+
+        profiles = np.zeros((nM, rs.size), dtype=np.double)
+        for Mi, M in enumerate(Ms):
+            pprofile = cls(M, z, omega_b, omega_m).pressure(rs)
+            profiles[Mi] = pprofile
+
+        weighted_profiles = np.zeros_like(rs, dtype=np.double)
+        for ri, r in enumerate(rs):
+            igrnd = Ms * hmf(Ms, z) * hmb(Ms, z) * profiles[:, ri]
+            weighted_profiles[ri] = integrate_spline(lnMs, igrnd,
+                                                     lnMs[0], lnMs[-1])
+
+        return weighted_profiles
 
     def _projected_pressure(self, r, dist=8, epsrel=1e-3):
         '''
