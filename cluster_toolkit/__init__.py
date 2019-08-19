@@ -29,6 +29,7 @@ _ffi = cffi.FFI()
 for file_name in glob.glob(os.path.join(include_dir,'*.h')):
     _ffi.cdef(open(file_name).read())
 _lib = _ffi.dlopen(lib_file)
+_lib.gsl_set_error_handler_off()
 
 def _dcast(x):
     if isinstance(x, list): x = np.asarray(x, dtype=np.float64, order='C')
