@@ -195,6 +195,36 @@ def test_spline_integration():
         assert (abs(res - truth) / truth) < 1e-2
 
 
+def test_abel_transform():
+    # Abel(tophat from 0 to a) = 2 sqrt(a*a - x*x)
+    xs = np.array([0, 0.5, 1])
+    ys = np.array([1, 1, 1])
+
+    rs = np.linspace(0, 2, 100)
+
+    for a in np.geomspace(0.1, 10, 10):
+        result = pp.abel_transform(a*xs, ys, rs)
+        truth = 2 * np.sqrt(a*a - rs[rs<=a]**2)
+
+        assert (np.abs(truth - result[rs<=a]) / truth <= 1e-2).all()
+        assert (result[rs>a] == 0).all()
+
+
+    # Abel tophat of Gaussian
+    epsabs = 1e-18
+    xs = np.linspace(0.001, 5, 1000)
+    rs = np.geomspace(0.1, 2, 50)
+
+    for sigma in np.geomspace(0.1, 1, 10):
+        ys = np.exp(-xs*xs/sigma/sigma)
+        result = pp.abel_transform(xs, ys, rs, epsabs=epsabs)
+        truth = sigma * np.sqrt(np.pi) * np.exp(-rs*rs/sigma/sigma)
+
+        diff = (np.abs(truth - result) / truth)
+        cond = (diff < 1e-3) | (np.abs(result) < epsabs)
+        assert cond.all()
+
+
 @pytest.mark.skip(reason='plots')
 def test_convolution_convergence():
     cosmo = get_cosmology(0)
