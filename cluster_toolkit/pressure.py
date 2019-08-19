@@ -223,9 +223,43 @@ def forward_spherical_fourier_transform(ks, rs, fs, limit=1000, epsabs=1e-21,
     return f_out
 
 
+def abel_transform(xs, ys, rs, limit=1000, epsabs=1e-29, epsrel=1e-3):
+    '''
+    Perform the Abel transform (line-of-sight projection) for a spherically
+    symmetric function defined by (xs, ys), on the grid of transverse radii
+    `rs`.
+
+    TODO: fully document.
+    '''
+    xs = np.ascontiguousarray(xs, dtype=np.double)
+    ys = np.ascontiguousarray(ys, dtype=np.double)
+    rs = np.ascontiguousarray(rs, dtype=np.double)
+
+    if xs.shape != ys.shape:
+        raise ValueError('integrate_spline: xs and ys must be same shape')
+
+    f_out = np.zeros_like(rs)
+    f_out_err = np.zeros_like(rs)
+
+    rc = _lib.abel_transform_interp(_dcast(f_out), _dcast(f_out_err),
+                                    _dcast(xs), _dcast(ys), ys.size,
+                                    _dcast(rs), rs.size,
+                                    limit, epsabs, epsrel)
+
+    if rc != 0:
+        msg = 'integrate_spline returned error code: {}'
+        raise RuntimeError(msg.format(rc))
+    return f_out
+
+
 def integrate_spline(xs, ys, a, b):
-    xs = np.asarray(xs, dtype=np.double)
-    ys = np.asarray(ys, dtype=np.double)
+    '''
+    Integrate a cubic spline of the function `ys = f(xs)` from x=a to x=b.
+
+    TODO: fully document.
+    '''
+    xs = np.ascontiguousarray(xs, dtype=np.double)
+    ys = np.ascontiguousarray(ys, dtype=np.double)
 
     if xs.shape != ys.shape:
         raise ValueError('integrate_spline: xs and ys must be same shape')
@@ -664,6 +698,33 @@ class BBPSProfile:
         return 2*np.pi*ks, (fftd / ks) * 2 * (rmax / (nr - 1))
 
     @classmethod
+    def projected_two_halo(cls, rs_proj, rs_2h, ks,
+                           z, omega_b, omega_m,
+                           hmb_m, hmb_z, hmb_b,
+                           hmf_m, hmf_z, hmf_f,
+                           P_lin_k, P_lin_z, P_lin,
+                           nM=1000, limit=1000,
+                           epsabs_2h=1e-21,
+                           epsabs_abel=1e-23,
+                           epsrel_abel=1e-3):
+        '''
+        Computes the projected 2-halo term.
+
+        TODO: this function has _way too many_ arguments. How to simplify?
+        '''
+        two_halo_3d = cls.two_halo(rs_2h, ks, z, omega_b, omega_m,
+                                   hmb_m, hmb_z, hmb_b,
+                                   hmf_m, hmf_z, hmf_f,
+                                   P_lin_k, P_lin_z, P_lin,
+                                   nM=nM, limit=limit,
+                                   epsabs=epsabs_2h)
+
+        return abel_transform(rs_2h, two_halo_3d, rs_proj,
+                              limit=limit,
+                              epsabs=epsabs_abel,
+                              epsrel=epsrel_abel)
+
+    @classmethod
     def two_halo(cls, rs, ks, z, omega_b, omega_m,
                  hmb_m, hmb_z, hmb_b,
                  hmf_m, hmf_z, hmf_f,
@@ -713,9 +774,15 @@ class BBPSProfile:
                                              nM=nM)
 
         P_lin = interp2d(P_lin_k, P_lin_z, P_lin)
-        # k_min, k_max = P_lin_k.min(), P_lin_k.max()
 
         Ps = P_lin(ks, z)
+        # import matplotlib.pyplot as plt
+        # plt.figure()
+        # plt.plot(ks, Ps, label='matter_power_lin')
+        # plt.plot(ks, igrnds, label='halo profile')
+        # plt.plot(ks, Ps * igrnds, label='product')
+        # plt.legend()
+        # plt.loglog()
         radial_term = inverse_spherical_fourier_transform(rs, ks, Ps * igrnds,
                                                           limit=limit,
                                                           epsabs=epsabs)

@@ -19,11 +19,21 @@
 #define RHO_CRIT (2.77536627e+11)
 
 
+// Computes the Fourier transform of a spherically symmetric function f_r
+// at a set of wavenumbers ks.
 static int
 spherical_fourier_transform(double *out, double *out_err,
                             const double *ks, unsigned Nk,
                             gsl_function *f_r,
                             unsigned limit, double epsabs);
+
+// Computes the line-of-sight projection of a spherically symmetric function
+// f_r at a set of transverse radii rs.
+static int
+abel_transform(double *out, double *out_err,
+               const double *rs, unsigned Nr,
+               gsl_function *f_r,
+               unsigned limit, double epsabs, double epsrel);
 
 // Computes the critical density of the universe, in units of
 // RHO_CRIT. Assumes a flat (omega_k == 0) universe.
@@ -91,22 +101,12 @@ projected_P_BBPS(double *P_out, double *P_err_out,
                  unsigned limit,
                  double epsabs, double epsrel)
 {
-    if ((P_out == NULL) || (r == NULL))
-        return GSL_FAILURE;
-
-    gsl_set_error_handler_off();
-    gsl_integration_workspace *wkspc = gsl_integration_workspace_alloc(limit);
-    if (!wkspc)
-        return GSL_ENOMEM;
-
     double
     integrand(double chi, void *params)
     {
-        const double this_r = *((const double *) params),
-                     central_distance = sqrt(this_r*this_r + chi*chi);
         double P = 0.0;
         P_BBPS(&P,
-               &central_distance, 1,
+               &chi, 1,
                M_delta, z,
                omega_b, omega_m,
                P_0, x_c, beta,
@@ -119,26 +119,10 @@ projected_P_BBPS(double *P_out, double *P_err_out,
     fn.params = NULL;
     fn.function = integrand;
 
-    int retcode = GSL_SUCCESS;
-    for (unsigned i = 0; i < Nr; i++) {
-        double this_r = r[i];
-        fn.params = &this_r;
-        double result = 0.0, err = 0.0;
-        retcode = gsl_integration_qagi(&fn,
-                                       epsabs, epsrel, limit,
-                                       wkspc, &result, &err);
-
-        // Handle any errors
-        if (retcode != GSL_SUCCESS)
-            break;
-
-        P_out[i] = result / (1 + z);
-        if (P_err_out)
-            P_err_out[i] = err;
-    }
-
-    gsl_integration_workspace_free(wkspc);
-    return retcode;
+    return abel_transform(P_out, P_err_out,
+                          r, Nr,
+                          &fn,
+                          limit, epsabs, epsrel);
 }
 
 
@@ -297,6 +281,60 @@ forward_spherical_fourier_transform(double *out, double *out_err,
     return rc;
 }
 
+int
+integrate_spline(const double *xs, const double *ys, unsigned Ny,
+                 double a, double b,
+                 double *result)
+{
+    gsl_interp *F_interp = gsl_interp_alloc(gsl_interp_cspline, Ny);
+    if (!F_interp)
+        return GSL_ENOMEM;
+
+    int rc = gsl_interp_init(F_interp, xs, ys, Ny);
+    if (rc != GSL_SUCCESS)
+        return rc;
+
+    return gsl_interp_eval_integ_e(F_interp, xs, ys, a, b, NULL, result);
+}
+
+
+// Computes the Abel transform (LOS projection) of a function defined on the
+// grid (r_grid, f_r), at a series of transverse points (rs, Nr).
+int
+abel_transform_interp(double *out, double *out_err,
+                      const double *r_grid, const double *f_r, unsigned Nr_grid,
+                      const double *rs, unsigned Nr,
+                      unsigned limit, double epsabs, double epsrel)
+{
+    gsl_interp *F_interp = gsl_interp_alloc(gsl_interp_cspline, Nr_grid);
+
+    if (!F_interp)
+        return GSL_ENOMEM;
+
+    int rc = gsl_interp_init(F_interp, r_grid, f_r, Nr_grid);
+    if (rc != GSL_SUCCESS)
+        return rc;
+
+    double integrand(double r, void *params) {
+        if (r < r_grid[0])
+            return f_r[0];
+
+        if (r > r_grid[Nr_grid - 1])
+            return 0.0;
+
+        return gsl_interp_eval(F_interp, r_grid, f_r, r, NULL);
+    }
+
+    gsl_function fn;
+    fn.params = NULL;
+    fn.function = integrand;
+
+    return abel_transform(out, out_err,
+                          rs, Nr,
+                          &fn,
+                          limit, epsabs, epsrel);
+}
+
 
 /// Computes the Fourier transform of a spherically symmetric distribution by:
 ///
@@ -386,18 +424,59 @@ spherical_fourier_transform(double *out, double *out_err,
     return retcode;
 }
 
-int
-integrate_spline(const double *xs, const double *ys, unsigned Ny,
-                 double a, double b,
-                 double *result)
+// Performs the Abel transform (LOS projection):
+//
+// F(r) = \int_{-\inf}^{\inf} dk f(\sqrt{r^2 + k^2})
+static int
+abel_transform(double *out, double *out_err,
+               const double *rs, unsigned Nr,
+               gsl_function *f_r,
+               unsigned limit, double epsabs, double epsrel)
 {
-    gsl_interp *F_interp = gsl_interp_alloc(gsl_interp_cspline, Ny);
-    if (!F_interp)
+    if ((out == NULL) || (rs == NULL))
+        return GSL_FAILURE;
+
+    gsl_set_error_handler_off();
+    // Allocate our needed workspaces
+    gsl_integration_workspace *wkspc = gsl_integration_workspace_alloc(limit);
+    if (!wkspc)
         return GSL_ENOMEM;
 
-    int rc = gsl_interp_init(F_interp, xs, ys, Ny);
-    if (rc != GSL_SUCCESS)
-        return rc;
+    // Our integrand is (f(R = sqrt(r*r + k*k))
+    double
+    integrand(double r, void *params)
+    {
+        const double chi = *((const double *) params),
+                     this_dist = sqrt(chi*chi + r*r);
 
-    return gsl_interp_eval_integ_e(F_interp, xs, ys, a, b, NULL, result);
+        return GSL_FN_EVAL(f_r, this_dist);
+    }
+
+    gsl_function fn;
+    fn.params = NULL;
+    fn.function = integrand;
+
+    int retcode = GSL_SUCCESS;
+    for (unsigned i = 0; i < Nr; i++) {
+        double this_r = rs[i];
+        fn.params = &this_r;
+
+        // Integrate on infinite range
+        double result = 0.0, err = 0.0;
+        retcode = gsl_integration_qagi(&fn,
+                                       epsabs, epsrel, limit,
+                                       wkspc, &result, &err);
+
+        // Handle any errors
+        if (retcode != GSL_SUCCESS)
+            break;
+
+        out[i] = result;
+        if (out_err)
+            out_err[i] = err;
+    }
+
+    // Clean up
+    gsl_integration_workspace_free(wkspc);
+    return retcode;
 }

@@ -4,3 +4,4 @@ int fourier_P_BBPS(double *up_out, double *up_err_out, const double *ks, unsigne
 int inverse_spherical_fourier_transform(double *out, double *out_err, const double *rs, unsigned Nr, const double *ks, const double *Fs, unsigned Nk, unsigned limit, double epsabs);
 int forward_spherical_fourier_transform(double *out, double *out_err, const double *ks, unsigned Nk, const double *rs, const double *fs, unsigned Nr, unsigned limit, double epsabs);
 int integrate_spline(const double *xs, const double *ys, unsigned Ny, double a, double b, double *result);
+int abel_transform_interp(double *out, double *out_err, const double *r_grid, const double *f_r, unsigned Nr_grid, const double *rs, unsigned Nr, unsigned limit, double epsabs, double epsrel);
