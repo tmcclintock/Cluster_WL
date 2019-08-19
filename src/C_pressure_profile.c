@@ -38,12 +38,12 @@ abel_transform(double *out, double *out_err,
 // Computes the critical density of the universe, in units of
 // RHO_CRIT. Assumes a flat (omega_k == 0) universe.
 static double
-rho_crit_z(double z, double omega_m)
+rho_crit_z(double z, double omega_m, double h)
 {
     const double omega_lambda = 1.0 - omega_m,
                  inv_a = 1.0 + z;
-    return RHO_CRIT * ((omega_m * inv_a * inv_a * inv_a)
-                       + omega_lambda);
+    return RHO_CRIT * h*h *((omega_m * inv_a * inv_a * inv_a)
+                             + omega_lambda);
 }
 
 // Calculated the virial radius of a halo of mass M_delta, of overdensity
@@ -51,17 +51,17 @@ rho_crit_z(double z, double omega_m)
 //
 // Units: Mpc h^{-2/3}
 static double
-R_delta(double M_delta, double z, double omega_m, double delta)
+R_delta(double M_delta, double z, double omega_m, double h, double delta)
 {
-    const double volume = M_delta / (delta * rho_crit_z(z, omega_m));
+    const double volume = M_delta / (delta * rho_crit_z(z, omega_m, h));
     return pow(3.0 * volume / (4.0 * M_PI), 1.0/3.0);
 }
 
 double
-P_delta(double M_delta, double z, double omega_b, double omega_m, double delta)
+P_delta(double M_delta, double z, double omega_b, double omega_m, double h, double delta)
 {
-    return G * M_delta * delta * rho_crit_z(z, omega_m)
-        * (omega_b / omega_m) / (2 * R_delta(M_delta, z, omega_m, delta));
+    return G * M_delta * delta * rho_crit_z(z, omega_m, h)
+        * (omega_b / omega_m) / (2 * R_delta(M_delta, z, omega_m, h, delta));
 }
 
 void
@@ -69,15 +69,15 @@ P_BBPS(double *P_out,
        const double *r, unsigned Nr,
        double M_delta, double z,
        // Cosmological parameters
-       double omega_b, double omega_m,
+       double omega_b, double omega_m, double h,
        // Fit parameters
        double P_0, double x_c, double beta,
        double alpha, double gamma,
        // Halo definition
        double delta)
 {
-    const double R_del = R_delta(M_delta, z, omega_m, delta),
-                 P_amp = P_delta(M_delta, z, omega_b, omega_m, delta);
+    const double R_del = R_delta(M_delta, z, omega_m, h, delta),
+                 P_amp = P_delta(M_delta, z, omega_b, omega_m, h, delta);
 
     for (unsigned i = 0; i < Nr; i++) {
         const double x = r[i] / R_del;
@@ -91,7 +91,7 @@ projected_P_BBPS(double *P_out, double *P_err_out,
                  // Inputs - array of radii, number of radii, mass and redshift
                  const double *r, unsigned Nr, double M_delta, double z,
                  // Cosmological parameters
-                 double omega_b, double omega_m,
+                 double omega_b, double omega_m, double h,
                  // Fit parameters
                  double P_0, double x_c, double beta,
                  double alpha, double gamma,
@@ -108,7 +108,7 @@ projected_P_BBPS(double *P_out, double *P_err_out,
         P_BBPS(&P,
                &chi, 1,
                M_delta, z,
-               omega_b, omega_m,
+               omega_b, omega_m, h,
                P_0, x_c, beta,
                alpha, gamma,
                delta);
@@ -132,7 +132,7 @@ int
 fourier_P_BBPS(double *up_out, double *up_err_out,
                const double *ks, unsigned Nk,
                double M_delta,
-               double z, double omega_b, double omega_m,
+               double z, double omega_b, double omega_m, double h,
                double P_0, double x_c, double beta,
                double alpha, double gamma, double delta,
                unsigned limit, double epsabs)
@@ -143,7 +143,7 @@ fourier_P_BBPS(double *up_out, double *up_err_out,
         double P = 0.0;
         P_BBPS(&P, &r, 1,
                M_delta, z,
-               omega_b, omega_m,
+               omega_b, omega_m, h,
                P_0, x_c, beta,
                alpha, gamma,
                delta);

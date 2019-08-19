@@ -28,7 +28,7 @@ _BBPS_params_x_c = (0.497, -0.00865, 0.731)
 _BBPS_params_beta = (4.35, 0.0393, 0.415)
 
 
-def _rho_crit(z, omega_m):
+def _rho_crit(z, omega_m, h):
     '''
     The critical density of the universe :math:`\\rho_{crit}`, in units of
     :math:`Msun*Mpc^{-3}*h^2`.
@@ -38,10 +38,10 @@ def _rho_crit(z, omega_m):
     # The constant is 3 * (100 km / s / Mpc)**2 / (8 * pi * G)
     # in units of Msun h^2 Mpc^{-3}
     # (source: astropy's constants module and unit conversions)
-    return 2.77536627e+11 * (omega_m * (1 + z)**3 + omega_lambda)
+    return 2.77536627e+11 * h*h * (omega_m * (1 + z)**3 + omega_lambda)
 
 
-def R_delta(M, z, omega_m, delta=200):
+def R_delta(M, z, omega_m, h, delta=200):
     '''
     The radius of a sphere of mass M (in Msun), which has a density `delta`
     times the critical density of the universe.
@@ -58,11 +58,11 @@ def R_delta(M, z, omega_m, delta=200):
     Returns:
         float or array: Radius, in :math:`\\text{Mpc} h^\\frac{-2}{3}`.
     '''
-    volume = M / (delta * _rho_crit(z, omega_m))
+    volume = M / (delta * _rho_crit(z, omega_m, h))
     return (3 * volume / (4 * np.pi))**(1./3)
 
 
-def P_delta(M, z, omega_b, omega_m, delta=200):
+def P_delta(M, z, omega_b, omega_m, h, delta=200):
     '''
     The pressure amplitude of a halo:
 
@@ -82,8 +82,8 @@ def P_delta(M, z, omega_b, omega_m, delta=200):
     '''
     # G = 4.51710305e-48 Mpc^3 Msun^{-1} s^{-2}
     # (source: astropy's constants module and unit conversions)
-    return 4.51710305e-48 * M * delta * _rho_crit(z, omega_m) * \
-        (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, delta))
+    return 4.51710305e-48 * M * delta * _rho_crit(z, omega_m, h) * \
+        (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, h, delta))
 
 
 def inverse_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
@@ -341,6 +341,7 @@ class BBPSProfile:
     Args:
         M (float): Cluster :math:`M_{\\Delta}`, in Msun.
         z (float): Cluster redshift.
+        h (float): The reduced Hubble constant, `H_0 / (100 km / s / Mpc)`
         omega_b (float): Baryon fraction.
         omega_m (float): Matter fraction.
         params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift dependence \
@@ -358,7 +359,7 @@ class BBPSProfile:
         delta (float): Halo overdensity :math:`\\Delta`.
     '''
     def __init__(self, M, z,
-                 omega_b, omega_m,
+                 omega_b, omega_m, h,
                  params_P_0=_BBPS_params_P_0,
                  params_x_c=_BBPS_params_x_c,
                  params_beta=_BBPS_params_beta,
@@ -372,6 +373,7 @@ class BBPSProfile:
         # Cosmological info
         self.__omega_b = omega_b
         self.__omega_m = omega_m
+        self.__h = h
 
         # Profile fit parameters
         self.__params_P_0 = params_P_0
@@ -398,7 +400,7 @@ class BBPSProfile:
         self._update_halo()
         return self
 
-    def update_cosmology(self, omega_b, omega_m):
+    def update_cosmology(self, omega_b, omega_m, h):
         '''
         Update cosmological parameters.
 
@@ -408,13 +410,15 @@ class BBPSProfile:
         '''
         self.__omega_b = omega_b
         self.__omega_m = omega_m
+        self.__h = h
         self._update_halo()
         return self
 
     def _update_halo(self):
-        self.__R_delta = R_delta(self.M, self.z, self.omega_m, delta=self.delta)
-        self.__P_delta = P_delta(self.M, self.z, self.omega_b, self.omega_m,
+        self.__R_delta = R_delta(self.M, self.z, self.omega_m, self.__h,
                                  delta=self.delta)
+        self.__P_delta = P_delta(self.M, self.z, self.omega_b, self.omega_m,
+                                 self.__h, delta=self.delta)
         self.__P_0 = self._A(self.M, self.z, *self.__params_P_0)
         self.__x_c = self._A(self.M, self.z, *self.__params_x_c)
         self.__beta = self._A(self.M, self.z, *self.__params_beta)
@@ -476,6 +480,19 @@ class BBPSProfile:
     @omega_m.setter
     def set_omega_m(self, omega_m):
         self.__omega_m = omega_m
+        self._update_halo()
+        self._update_halo()
+
+    @property
+    def h(self):
+        '''
+        Matter fraction.
+        '''
+        return self.__h
+
+    @h.setter
+    def set_h(self, h):
+        self.__h = h
         self._update_halo()
         self._update_halo()
 
@@ -546,7 +563,7 @@ class BBPSProfile:
         _lib.P_BBPS(_dcast(P_out),
                     _dcast(r), len(r),
                     self.M, self.z,
-                    self.omega_b, self.omega_m,
+                    self.omega_b, self.omega_m, self.h,
                     self.__P_0, self.__x_c, self.__beta,
                     float(self.alpha), self.gamma,
                     self.delta)
@@ -591,7 +608,7 @@ class BBPSProfile:
         rc = _lib.projected_P_BBPS(_dcast(P_out), _dcast(P_err_out),
                                    _dcast(r), len(r),
                                    self.M, self.z,
-                                   self.omega_b, self.omega_m,
+                                   self.omega_b, self.omega_m, self.h,
                                    self.__P_0, self.__x_c, self.__beta,
                                    self.alpha, self.gamma,
                                    self.delta,
@@ -699,7 +716,7 @@ class BBPSProfile:
 
     @classmethod
     def projected_two_halo(cls, rs_proj, rs_2h, ks,
-                           z, omega_b, omega_m,
+                           z, omega_b, omega_m, h,
                            hmb_m, hmb_z, hmb_b,
                            hmf_m, hmf_z, hmf_f,
                            P_lin_k, P_lin_z, P_lin,
@@ -712,7 +729,7 @@ class BBPSProfile:
 
         TODO: this function has _way too many_ arguments. How to simplify?
         '''
-        two_halo_3d = cls.two_halo(rs_2h, ks, z, omega_b, omega_m,
+        two_halo_3d = cls.two_halo(rs_2h, ks, z, omega_b, omega_m, h,
                                    hmb_m, hmb_z, hmb_b,
                                    hmf_m, hmf_z, hmf_f,
                                    P_lin_k, P_lin_z, P_lin,
@@ -725,7 +742,7 @@ class BBPSProfile:
                               epsrel=epsrel_abel)
 
     @classmethod
-    def two_halo(cls, rs, ks, z, omega_b, omega_m,
+    def two_halo(cls, rs, ks, z, omega_b, omega_m, h,
                  hmb_m, hmb_z, hmb_b,
                  hmf_m, hmf_z, hmf_f,
                  P_lin_k, P_lin_z, P_lin,
@@ -768,7 +785,7 @@ class BBPSProfile:
         Returns:
             (array): TODO
         '''
-        igrnds = cls.two_halo_mass_integrand(ks, z, omega_b, omega_m,
+        igrnds = cls.two_halo_mass_integrand(ks, z, omega_b, omega_m, h,
                                              hmb_m, hmb_z, hmb_b,
                                              hmf_m, hmf_z, hmf_f,
                                              nM=nM)
@@ -792,7 +809,7 @@ class BBPSProfile:
 
     @classmethod
     def two_halo_mass_integrand(cls, ks, z,
-                                omega_b, omega_m,
+                                omega_b, omega_m, h,
                                 hmb_m, hmb_z, hmb_b,
                                 hmf_m, hmf_z, hmf_f,
                                 nr=1000, nM=1000,
@@ -801,7 +818,7 @@ class BBPSProfile:
         A mass-weighted pressure profile, in Fourier space.
         '''
         rs = np.geomspace(1 / ks.max(), 2 * np.pi / ks.min(), nr)
-        mass_weighted = cls.mass_weighted_profile(rs, z, omega_b, omega_m,
+        mass_weighted = cls.mass_weighted_profile(rs, z, omega_b, omega_m, h,
                                                   hmb_m, hmb_z, hmb_b,
                                                   hmf_m, hmf_z, hmf_f,
                                                   nM=nM)
@@ -810,7 +827,7 @@ class BBPSProfile:
                                                    limit=limit, epsabs=epsabs)
 
     @classmethod
-    def mass_weighted_profile(cls, rs, z, omega_b, omega_m,
+    def mass_weighted_profile(cls, rs, z, omega_b, omega_m, h,
                               hmb_m, hmb_z, hmb_b,
                               hmf_m, hmf_z, hmf_f,
                               nM=1000):
@@ -851,7 +868,7 @@ class BBPSProfile:
 
         profiles = np.zeros((nM, rs.size), dtype=np.double)
         for Mi, M in enumerate(Ms):
-            pprofile = cls(M, z, omega_b, omega_m).pressure(rs)
+            pprofile = cls(M, z, omega_b, omega_m, h).pressure(rs)
             profiles[Mi] = pprofile
 
         weighted_profiles = np.zeros_like(rs, dtype=np.double)
@@ -876,9 +893,8 @@ class BBPSProfile:
             float: Integrated line-of-sight pressure at distance `r` from the \
                    cluster, in units of Msun s^{-2}.
         '''
-        R_del = R_delta(self.M, self.z, self.omega_m)
         return quad(lambda x: self.pressure(np.sqrt(x*x + r*r)),
-                    -dist * R_del, dist * R_del,
+                    -dist * self.R_delta, dist * self.R_delta,
                     epsrel=epsrel)[0] / (1 + self.z)
 
     def _projected_pressure_real(self, r, chis, zs,
@@ -953,7 +969,7 @@ class BBPSProfile:
         rc = _lib.fourier_P_BBPS(_dcast(up_out), _dcast(up_err_out),
                                  _dcast(k), len(k),
                                  self.M, self.z,
-                                 self.omega_b, self.omega_m,
+                                 self.omega_b, self.omega_m, self.h,
                                  self.__P_0, self.__x_c, self.__beta,
                                  self.alpha, self.gamma,
                                  self.delta,
