@@ -722,7 +722,7 @@ class BBPSProfile:
         return abel_transform(rs_2h, two_halo_3d, rs_proj,
                               limit=limit,
                               epsabs=epsabs_abel,
-                              epsrel=epsrel_abel)
+                              epsrel=epsrel_abel) / (1 + z)
 
     @classmethod
     def two_halo(cls, rs, ks, z, omega_b, omega_m,
