@@ -31,7 +31,7 @@ _BBPS_params_beta = (4.35, 0.0393, 0.415)
 def _rho_crit(z, omega_m, h):
     '''
     The critical density of the universe :math:`\\rho_{crit}`, in units of
-    :math:`Msun*Mpc^{-3}*h^2`.
+    :math:`Msun*Mpc^{-3}`.
     '''
     # The below formula assumes a flat univers, i.e. omega_m + omega_lambda = 1
     omega_lambda = 1 - omega_m
@@ -56,7 +56,7 @@ def R_delta(M, z, omega_m, h, delta=200):
         delta (float or array): The halo overdensity :math:`\\Delta`.
 
     Returns:
-        float or array: Radius, in :math:`\\text{Mpc} h^\\frac{-2}{3}`.
+        float or array: Radius, in :math:`\\text{Mpc}`.
     '''
     volume = M / (delta * _rho_crit(z, omega_m, h))
     return (3 * volume / (4 * np.pi))**(1./3)
@@ -78,7 +78,7 @@ def P_delta(M, z, omega_b, omega_m, h, delta=200):
         delta (float): The halo overdensity :math:`\\Delta`.
 
     Returns:
-        float: Pressure amplitude, in units of Msun h^{8/3} s^{-2} Mpc^{-1}.
+        float: Pressure amplitude, in units of Msun s^{-2} Mpc^{-1}.
     '''
     # G = 4.51710305e-48 Mpc^3 Msun^{-1} s^{-2}
     # (source: astropy's constants module and unit conversions)
@@ -407,6 +407,7 @@ class BBPSProfile:
         Args:
             omega_b (float): Baryon fraction.
             omega_m (float): Mass fraction.
+            h (float): Reduced hubble constant.
         '''
         self.__omega_b = omega_b
         self.__omega_m = omega_m
@@ -415,7 +416,7 @@ class BBPSProfile:
         return self
 
     def _update_halo(self):
-        self.__R_delta = R_delta(self.M, self.z, self.omega_m, self.__h,
+        self.__R_delta = R_delta(self.M, self.z, self.omega_m, self.h,
                                  delta=self.delta)
         self.__P_delta = P_delta(self.M, self.z, self.omega_b, self.omega_m,
                                  self.__h, delta=self.delta)
@@ -481,19 +482,17 @@ class BBPSProfile:
     def set_omega_m(self, omega_m):
         self.__omega_m = omega_m
         self._update_halo()
-        self._update_halo()
 
     @property
     def h(self):
         '''
-        Matter fraction.
+        Reduced Hubble constant.
         '''
         return self.__h
 
     @h.setter
     def set_h(self, h):
         self.__h = h
-        self._update_halo()
         self._update_halo()
 
     @property
@@ -506,7 +505,7 @@ class BBPSProfile:
         whenever the parameters it depends on are.
 
         Units:
-            :math:`\\text{Mpc} h^\\frac{-2}{3}`.
+            :math:`\\text{Mpc}`.
         '''
         return self.__R_delta
 
@@ -520,7 +519,7 @@ class BBPSProfile:
         whenever the parameters it depends on are.
 
         Units:
-            :math:`M_{sun} h^{8/3} s^{-2} \\text{Mpc}^{-1}`
+            :math:`M_{sun} s^{-2} \\text{Mpc}^{-1}`
         '''
         return self.__P_delta
 
@@ -539,12 +538,12 @@ class BBPSProfile:
 
         Args:
             r (float or array): Radii from the cluster center, \
-                                in Mpc :math:`h^{-2/3}`. If an array, an array \
+                                in :math:`Mpc`. If an array, an array \
                                 is returned, if a scalar, a scalar is returned.
 
         Returns:
             float or array: Pressure at distance `r` from the cluster, in \
-                            units of \ :math:`h^{8/3} Msun s^{-2} Mpc^{-1}`. \
+                            units of \ :math:`Msun s^{-2} Mpc^{-1}`. \
                             If `r` was an array, an array of the same shape is \
                             returned.
         '''
@@ -588,7 +587,7 @@ class BBPSProfile:
 
         Returns:
             float or array: Integrated line-of-sight pressure at distance `r` \
-                            from the cluster, in units of Msun s^{-2} h^{8/3}. \
+                            from the cluster, in units of :math:`Msun s^{-2}`. \
                             If `return_errs` is set, returns a 2-tuple of \
                             (values, errors).
         '''
@@ -637,9 +636,7 @@ class BBPSProfile:
             r (float or array): Radius from the cluster center, in Mpc.
 
         Returns:
-            float or array: Compton y parameter. Units are :math:`h^{8/3}`, so \
-                            multiply by :math:`h^{8/3}` to obtain the true \
-                            value.
+            float or array: Compton y parameter. Unitless.
         '''
         # The constant is \sigma_T / (m_e * c^2), the Thompson cross-section
         # divided by the mass-energy of the electron, in units of s^2 Msun^{-1}.
