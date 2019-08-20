@@ -119,10 +119,21 @@ projected_P_BBPS(double *P_out, double *P_err_out,
     fn.params = NULL;
     fn.function = integrand;
 
-    return abel_transform(P_out, P_err_out,
-                          r, Nr,
-                          &fn,
-                          limit, epsabs, epsrel);
+    int rc = abel_transform(P_out, P_err_out,
+                            r, Nr,
+                            &fn,
+                            limit, epsabs, epsrel);
+
+    if (rc != GSL_SUCCESS)
+        return rc;
+
+    for (unsigned i = 0; i < Nr; i++) {
+        P_out[i] /= 1 + z;
+        if (P_err_out)
+            P_err_out[i] /= 1 + z;
+    }
+
+    return rc;
 }
 
 
