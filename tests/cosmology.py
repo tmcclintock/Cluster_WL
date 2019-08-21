@@ -2,6 +2,24 @@ import numpy as np
 import os
 from scipy.interpolate import interp2d
 
+try:
+    from colossus.halo import mass_defs, concentration
+    have_colossus = True
+except ImportError:
+    have_colossus = False
+
+
+def convert_mass(m, z, mdef_in='200c', mdef_out='200m', profile='nfw'):
+    '''
+    Converts between mass definitions.
+    '''
+    if not have_colossus:
+        raise Exception('Colossus is necessary for mass definition changes')
+    c = concentration.concentration(m, mdef_in, z,
+                                    conversion_profile=profile)
+    return mass_defs.changeMassDefinition(m, c, z, mdef_in, mdef_out,
+                                          profile=profile)
+
 
 def get_cosmology(n):
     '''
@@ -19,6 +37,8 @@ def get_cosmology(n):
                 cosmo[name] = float(val)
                 if name == 'h0':
                     h0 = float(val)
+                if name == 'omega_m':
+                    omega_m = float(val)
 
     def load_path(fname):
         return np.loadtxt(os.path.join(dir_, fname))
@@ -29,9 +49,11 @@ def get_cosmology(n):
     cosmo['d_a'] = load_path('distances/d_a.txt')
 
     # Get halo mass function
+    # NB: mass definition is _MEAN MASS OVERDENSITY_, not _CRITICAL MASS
+    # OVERDENSITY_
     cosmo['hmf_z'] = load_path('mass_function/z.txt')
-    cosmo['hmf_m'] = load_path('mass_function/m_h.txt') / h0
-    cosmo['hmf_dndm'] = load_path('mass_function/dndlnmh.txt') * (h0**3)
+    cosmo['hmf_m'] = load_path('mass_function/m_h.txt') * omega_m / h0
+    cosmo['hmf_dndm'] = load_path('mass_function/dndlnmh.txt') * h0**3
 
     # (Convert to dn/dm from dn/d(lnm))
     for i in range(cosmo['hmf_dndm'].shape[0]):
