@@ -3,22 +3,25 @@ import os
 from scipy.interpolate import interp2d
 
 try:
-    from colossus.halo import mass_defs, concentration
+    from colossus.halo import concentration, mass_defs
+    from colossus.cosmology import cosmology
     have_colossus = True
 except ImportError:
     have_colossus = False
 
 
-def convert_mass(m, z, mdef_in='200c', mdef_out='200m', profile='nfw'):
+def convert_mass(m, z, mdef_in='200c', mdef_out='200m',
+                 concentration_model='diemer19', profile='nfw'):
     '''
     Converts between mass definitions.
     '''
     if not have_colossus:
         raise Exception('Colossus is necessary for mass definition changes')
     c = concentration.concentration(m, mdef_in, z,
+                                    model=concentration_model,
                                     conversion_profile=profile)
     return mass_defs.changeMassDefinition(m, c, z, mdef_in, mdef_out,
-                                          profile=profile)
+                                          profile=profile)[0]
 
 
 def get_cosmology(n):
@@ -33,12 +36,22 @@ def get_cosmology(n):
     with open(os.path.join(dir_, 'cosmological_parameters/values.txt')) as f:
         for line in f.readlines():
             name, val = line.split(' = ')
-            if name in ['omega_b', 'omega_m', 'h0']:
+            if name in ['omega_b', 'omega_m', 'h0', 'n_s', 'sigma_8']:
                 cosmo[name] = float(val)
                 if name == 'h0':
                     h0 = float(val)
                 if name == 'omega_m':
                     omega_m = float(val)
+
+    # Set the colossus cosmology to this
+    # Note: this assumes a flat \Lambda CDM
+    if have_colossus:
+        params = {'Om0': omega_m,
+                  'Ob0': cosmo['omega_b'],
+                  'H0': 100 * h0,
+                  'sigma8': cosmo['sigma_8'],
+                  'ns': cosmo['n_s']}
+        cosmology.setCosmology('clusterToolkitText', params)
 
     def load_path(fname):
         return np.loadtxt(os.path.join(dir_, fname))
@@ -61,8 +74,10 @@ def get_cosmology(n):
     cosmo['hmf'] = interp2d(cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_dndm'])
 
     # Get the halo mass bias
+    # As with HMF, NB: mass definition is _MEAN MASS OVERDENSITY_, not
+    # _CRITICAL MASS OVERDENSITY_
     cosmo['hmb_z'] = load_path('tinker_bias_function/z.txt')
-    cosmo['hmb_m'] = np.exp(load_path('tinker_bias_function/ln_mass.txt'))
+    cosmo['hmb_m'] = np.exp(load_path('tinker_bias_function/ln_mass_h.txt'))/h0
     cosmo['hmb_b'] = load_path('tinker_bias_function/bias.txt')
     cosmo['hmb'] = interp2d(cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b'])
 
