@@ -993,13 +993,6 @@ class TwoHaloProfile:
                                               nM=nM)
 
         Ps = self.P_lin(ks, z)
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.plot(ks, Ps, label='matter_power_lin')
-        # plt.plot(ks, igrnds, label='halo profile')
-        # plt.plot(ks, Ps * igrnds, label='product')
-        # plt.legend()
-        # plt.loglog()
         radial_term = inverse_spherical_fourier_transform(rs, ks, Ps * igrnds,
                                                           limit=limit,
                                                           epsabs=epsabs)
@@ -1078,3 +1071,51 @@ class TwoHaloProfile:
                                                      lnMs_halo_mass[-1])
 
         return weighted_profiles
+
+    def projected_convolved(self, da, z, rs_proj, rs_2h, ks,
+                            theta=15, n=200,
+                            psf_sigma=5 / np.sqrt(2 * np.log(2)),
+                            nM=1000, limit=1000,
+                            epsabs_2h=1e-21,
+                            epsabs_abel=1e-23,
+                            epsrel_abel=1e-3):
+        '''
+        Computes the 2halo term as the projected-and-convolved Compton-y
+        parameter.
+
+        Args:
+            da (float): Angular diameter distance at `z`.
+            z (float): Redshift to use.
+            rs_proj (array): The transverse distances at which to project.
+                             Units: :math:`Mpc`
+            rs_2h (array): The radii at which to compute the 3D 2-halo term.
+                           (The projection is performed on an interpolation
+                           table, this is the spacing of that interpolation
+                           table.)
+                           Units: :math:`Mpc`
+            ks (array): Wavenumbers to use for computing 3D 2h term.
+                        Units: :math:`Mpc^{-1}`.
+            theta (float): Half-width of the convolved image, in arcmin.
+            n (int): The side length of the image, in pixels. The convolution
+                     is performed on an n x n image.
+            psf_sigma (float): The standard deviation of the Gaussian beam. The
+                               default is the Planck beam, in arcmin.
+
+        Returns:
+            (2-tuple of array): Pair of (rs, smoothed ys). `rs` runs from \
+                                :math:`(theta / (n // 2)) / 2` to \
+                                :math:`\\sqrt(2) theta`, and contains `n` \
+                                points.
+        '''
+        projection = self.projected_two_halo(rs_proj, rs_2h, ks, z,
+                                             nM=nM, limit=limit,
+                                             epsabs_2h=epsabs_2h,
+                                             epsabs_abel=epsabs_abel,
+                                             epsrel_abel=epsrel_abel)
+        interp = interp1d(rs_proj, projection)
+
+        def image_func(thetas):
+            # Convert arcmin to physical transverse distance
+            return interp(thetas * da / 60 * np.pi / 180)
+        return create_convolved_profile(image_func,
+                                        theta=theta, n=n, sigma=psf_sigma)
