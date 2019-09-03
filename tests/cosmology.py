@@ -10,13 +10,15 @@ except ImportError:
     have_colossus = False
 
 
-def convert_mass(m, z, mdef_in='200c', mdef_out='200m', profile='nfw'):
+def convert_mass(m, z, mdef_in='200c', mdef_out='200m',
+                 concentration_model='diemer19', profile='nfw'):
     '''
     Converts between mass definitions.
     '''
     if not have_colossus:
         raise Exception('Colossus is necessary for mass definition changes')
     c = concentration.concentration(m, mdef_in, z,
+                                    model=concentration_model,
                                     conversion_profile=profile)
     return mass_defs.changeMassDefinition(m, c, z, mdef_in, mdef_out,
                                           profile=profile)[0]

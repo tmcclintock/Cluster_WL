@@ -26,7 +26,7 @@ def do_test_projection_approximation(n, epsrel=1e-4):
     cosmo = get_cosmology(n)
     r, M, z = sample_rMz()
 
-    bbps = pp.BBPSProfile(M, z, cosmo['omega_b'], cosmo['omega_m'])
+    bbps = pp.BBPSProfile(M, z, cosmo['omega_b'], cosmo['omega_m'], cosmo['h0'])
 
     # Compute the 'true' value
     expected = bbps._projected_pressure_real(r, cosmo['chi'], cosmo['z_chi'],
@@ -84,13 +84,13 @@ def test_pressure():
         # TODO better way to get this?
         row1 = next(bin_.iterrows())[1]
         M200, z = row1.M200, row1.z
-        bbps = pp.BBPSProfile(M200, z, cosmo['omega_b'], cosmo['omega_m'])
+        bbps = pp.BBPSProfile(M200, z,
+                              cosmo['omega_b'], cosmo['omega_m'], cosmo['h0'])
         for r, P in zip(bin_.r, bin_.P):
-            ourP = bbps.pressure(r * cosmo['h0']**(2/3))
+            ourP = bbps.pressure(r)
             # Convert to dimensionless `y` (see pp.projected_y_BBPS)
             ourP *= 1.61574202e+15
             # Make unitful
-            ourP *= cosmo['h0']**(8/3)
             # Adjust P_{gas} to P_{electron}
             ourP *= (2 * Xh + 2) / (5 * Xh + 3)
             assert abs((ourP - P) / P) < 5e-3
@@ -106,7 +106,8 @@ def test_y_projection():
         # TODO better way to get this?
         row1 = next(bin_.iterrows())[1]
         M200, z = row1.M200, row1.z
-        bbps = pp.BBPSProfile(M200, z, cosmo['omega_b'], cosmo['omega_m'])
+        bbps = pp.BBPSProfile(M200, z,
+                              cosmo['omega_b'], cosmo['omega_m'], cosmo['h0'])
         for r, y in zip(bin_.r, bin_.y):
             oury = bbps.compton_y(r * cosmo['h0']**(2/3))
             # Convert to dimensionless `y` (see pp.projected_y_BBPS)
@@ -121,7 +122,8 @@ def test_fourier():
     # Units: Mpc
     rmin, nr = 20, 500
     for m, z in product(Ms, zs):
-        halo = pp.BBPSProfile(m, z, cosmo['omega_b'], cosmo['omega_m'])
+        halo = pp.BBPSProfile(m, z,
+                              cosmo['omega_b'], cosmo['omega_m'], cosmo['h0'])
         # Compare both Python and C versions of the Fourier transform
         ks, ps = halo.fourier_pressure(rmin, nr)
         ps_C = halo._C_fourier_pressure(ks)
@@ -133,7 +135,8 @@ def test_inverse_fourier():
     # Create our test halo
     M, z = 1e14, 0.2
     omega_b, omega_m = 0.04, 0.28
-    halo = pp.BBPSProfile(M, z, omega_b, omega_m)
+    h0 = 0.7
+    halo = pp.BBPSProfile(M, z, omega_b, omega_m, h0)
 
     # Create our real and Fourier space evaluation grids
     rs = np.geomspace(0.01, 15, 100)
@@ -233,7 +236,8 @@ def test_convolution_convergence():
     zs = [0.2]
     da_interp = interp1d(cosmo['z_chi'], cosmo['d_a'])
     for (M, z) in zip(Ms, zs):
-        halo = pp.BBPSProfile(M, z, cosmo['omega_b'], cosmo['omega_m'])
+        halo = pp.BBPSProfile(M, z,
+                              cosmo['omega_b'], cosmo['omega_m'], cosmo['h0'])
         convolved = [halo.convolved_y(da=da_interp(z), n=n) for n in ns]
         fig, axs = plt.subplots(nrows=2, figsize=(8, 6), sharex=True,
                                 gridspec_kw={'height_ratios': [2, 1]})
@@ -259,7 +263,7 @@ def test_2halo():
     ks = np.geomspace(0.1, 20, 100)
     z = 0.2
     two_halo = pp.BBPSProfile.two_halo(rs, ks, z,
-                                       cosmo['omega_b'], cosmo['omega_m'],
+                                       cosmo['omega_b'], cosmo['omega_m'], cosmo['h0'],
                                        cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b'],
                                        cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_dndm'],
                                        cosmo['P_lin_k'], cosmo['P_lin_z'], cosmo['P_lin_p'])
