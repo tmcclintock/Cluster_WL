@@ -1,5 +1,5 @@
 from cluster_toolkit import pressure as pp
-from cosmology import get_cosmology
+from cosmology import get_cosmology, convert_mass
 from itertools import product
 import math
 import matplotlib.pyplot as plt
@@ -262,11 +262,18 @@ def test_2halo():
     rs = np.geomspace(0.1, 10, 20)
     ks = np.geomspace(0.1, 20, 100)
     z = 0.2
-    two_halo = pp.BBPSProfile.two_halo(rs, ks, z,
-                                       cosmo['omega_b'], cosmo['omega_m'], cosmo['h0'],
-                                       cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b'],
-                                       cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_dndm'],
-                                       cosmo['P_lin_k'], cosmo['P_lin_z'], cosmo['P_lin_p'])
+    # Create mass def interpolation table
+    m200c_lo = convert_mass(cosmo['hmf_m'].min(), z, mdef_in='200m', mdef_out='200c')
+    m200c_hi = convert_mass(cosmo['hmf_m'].max(), z, mdef_in='200m', mdef_out='200c')
+    m200c = np.geomspace(m200c_lo * 0.95, m200c_hi * 1.05, cosmo['hmf_m'].size)
+    m200m = convert_mass(m200c, z, mdef_in='200c', mdef_out='200m')
+    # Do two-halo computation
+    th = pp.TwoHaloProfile(cosmo['omega_b'], cosmo['omega_m'], cosmo['h0'],
+                           cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b'],
+                           cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_dndm'],
+                           cosmo['P_lin_k'], cosmo['P_lin_z'], cosmo['P_lin_p'],
+                           m200m, m200c)
+    two_halo = th.two_halo(rs, ks, z)
     plt.plot(rs, two_halo)
     plt.loglog()
     plt.show()

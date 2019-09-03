@@ -6,21 +6,37 @@
 Galaxy cluster pressure profiles. Useful for modeling Sunyaev-Zeldovich cluster
 observables.
 
-This module implements pressure profiles presented by Battaglia et al. 2012
-(https://ui.adsabs.harvard.edu/abs/2012ApJ...758...75B/abstract), referred to
-as BBPS. Calculations related to it are in the class :class:`BBPSProfile`.
+This module implements pressure profiles presented by `Battaglia et al. 2012
+<https://ui.adsabs.harvard.edu/abs/2012ApJ...758...75B/abstract>`_, referred to
+here as BBPS. Calculations related to it are in the class :class:`BBPSProfile`.
 
-The best-fit 3D profile is implemented in :meth:`BBPSProfile.pressure`. Its 3D
+The best-fit 3D one-halo profile, :math:`\\xi_{h, P}^{1h}(r | M, z)`,
+from BBPS is implemented in :meth:`BBPSProfile.pressure`. Its 3D
 projection and the projected Compton-y parameter are computed by
 :meth:`BBPSProfile.projected_pressure` and :meth:`BBPSProfile.compton_y`,
 respectively.
+
+The two-halo term :math:`\\xi_{h, P}^{2h}(r | M, z)` is a result of correlated
+structure near a halo. (I.e. halos tend to be near each other, which means the
+one halo :math:`\\xi_{h, P}^{1h}(r | M, z)` alone is inadequate). For an
+overview of the two-halo term and how to compute it, see
+`Vikram et al. 2017
+<https://ui.adsabs.harvard.edu/abs/2017MNRAS.467.2315V/abstract>`_
+or
+`Hill et al. 2018
+<https://ui.adsabs.harvard.edu/abs/2018PhRvD..97h3501H/abstract>`_.
+
+A general class for computing the 2-halo correlation is given in
+:class:`TwoHaloProfile`, which uses the BBPS profile by default.
+
+TODO: Document expected 1-halo arguments used by the 2-halo class.
 '''
 
 from astropy.convolution import Gaussian2DKernel, convolve_fft
 from cluster_toolkit import _dcast, _lib
 import numpy as np
 from scipy.integrate import quad
-from scipy.interpolate import interp2d
+from scipy.interpolate import interp1d, interp2d
 
 # Battaglia best fit parameters
 _BBPS_params_P_0 = (18.1, 0.154, -0.758)
@@ -339,7 +355,9 @@ class BBPSProfile:
            1.78752532e-24, 1.05882458e-24])
 
     Args:
-        M (float): Cluster :math:`M_{\\Delta}`, in Msun.
+        M (float): Cluster :math:`M_{\\Delta c}`, in Msun.
+                   **NB** this is the **CRITICAL MASS OVERDENSITY** mass
+                   definition.
         z (float): Cluster redshift.
         h (float): The reduced Hubble constant, `H_0 / (100 km / s / Mpc)`
         omega_b (float): Baryon fraction.
@@ -537,15 +555,13 @@ class BBPSProfile:
         The best-fit 3D pressure profile.
 
         Args:
-            r (float or array): Radii from the cluster center, \
-                                in :math:`Mpc`. If an array, an array \
+            r (float or array): Radii from the cluster center,
+                                in :math:`Mpc`. If an array, an array
                                 is returned, if a scalar, a scalar is returned.
 
         Returns:
-            float or array: Pressure at distance `r` from the cluster, in \
-                            units of \ :math:`Msun s^{-2} Mpc^{-1}`. \
-                            If `r` was an array, an array of the same shape is \
-                            returned.
+            (float or array): Pressures corresponding to `r`, in units of
+                              :math:`Msun s^{-2} Mpc^{-1}`.
         '''
         r = np.asarray(r, dtype=np.double)
 
@@ -580,15 +596,15 @@ class BBPSProfile:
         Args:
             r (float or array): Radius from the cluster center, in Mpc.
             return_errs (bool): Whether to return integration errors.
-            limit (int): Number of subdivisions to use for integration \
+            limit (int): Number of subdivisions to use for integration
                          algorithm.
             epsabs (float): Absolute allowable error for integration.
             epsrel (float): Relative allowable error for integration.
 
         Returns:
-            float or array: Integrated line-of-sight pressure at distance `r` \
-                            from the cluster, in units of :math:`Msun s^{-2}`. \
-                            If `return_errs` is set, returns a 2-tuple of \
+            tuple or array: Integrated line-of-sight pressure at distance `r`
+                            from the cluster, in units of :math:`Msun s^{-2}`.
+                            If `return_errs` is set, returns a 2-tuple of
                             (values, errors).
         '''
         r = np.asarray(r, dtype=np.double)
@@ -711,171 +727,6 @@ class BBPSProfile:
 
         return 2*np.pi*ks, (fftd / ks) * 2 * (rmax / (nr - 1))
 
-    @classmethod
-    def projected_two_halo(cls, rs_proj, rs_2h, ks,
-                           z, omega_b, omega_m, h,
-                           hmb_m, hmb_z, hmb_b,
-                           hmf_m, hmf_z, hmf_f,
-                           P_lin_k, P_lin_z, P_lin,
-                           nM=1000, limit=1000,
-                           epsabs_2h=1e-21,
-                           epsabs_abel=1e-23,
-                           epsrel_abel=1e-3):
-        '''
-        Computes the projected 2-halo term.
-
-        TODO: this function has _way too many_ arguments. How to simplify?
-        '''
-        two_halo_3d = cls.two_halo(rs_2h, ks, z, omega_b, omega_m, h,
-                                   hmb_m, hmb_z, hmb_b,
-                                   hmf_m, hmf_z, hmf_f,
-                                   P_lin_k, P_lin_z, P_lin,
-                                   nM=nM, limit=limit,
-                                   epsabs=epsabs_2h)
-
-        return abel_transform(rs_2h, two_halo_3d, rs_proj,
-                              limit=limit,
-                              epsabs=epsabs_abel,
-                              epsrel=epsrel_abel) / (1 + z)
-
-    @classmethod
-    def two_halo(cls, rs, ks, z, omega_b, omega_m, h,
-                 hmb_m, hmb_z, hmb_b,
-                 hmf_m, hmf_z, hmf_f,
-                 P_lin_k, P_lin_z, P_lin,
-                 nM=1000, limit=1000,
-                 epsabs=1e-21):
-        '''
-        Computes the 2-halo term :math:`\\xi_{h, P}(r | M, z)`:
-
-        :math:`\\xi_{h,P}(r | M, z) = \\int_0^\infty dk \\frac{k^2}{2 \\pi^2} \
-                sin(kr) / (kr) P_{h, P}(k | M, z)`
-        :math:`P_{h, P}(k | M, z) = b(M, z) P_{lin}(k, z) \\int_0^\infty \
-                dM^\\prime \\frac{dn}{dM^\\prime} b(M^\\prime, z) \
-                u_P(k | M^\\prime, z)`
-        :math:`u_P(k | M, z) = \int_0^\\infty dr 4\\pi r^2 sin(kr)/(kr) \
-                P_e(r | M^\\prime, z)`
-
-        Args:
-            ks (array):
-            omega_b (float): Baryon fraction.
-            omega_m (float): Matter fraction.
-            hmb_m (1d array): The mass points at which the halo mass bias is \
-                              evaluated. Units: :math:`M_{sun}`.
-            hmb_z (1d array): The redshifts at which the halo mass bias is \
-                              evaluated.
-            hmb_b (2d array): The evaluated halo mass bias, for each (m, z) \
-                              combination.
-            hmf_m (1d array): The mass points at which the halo mass function \
-                              is evaluated. Units: :math:`M_{sun}`.
-            hmf_z (1d array): The redshifts at which the halo mass function is \
-                              evaluated.
-            hmf_f (2d array): The evaluated halo mass function, for each \
-                              (m, z) combination.
-            P_lin_k (1d array): The wavenumbers at which the linear matter \
-                                power spectrum is evaluated.
-            P_lin_z (1d array): The redshifts at which the linear matter power \
-                                spectrum is evaluated.
-            P_lin (2d array): The evaluated linear matter power spectrum, for \
-                              each (k, z) combination.
-
-        Returns:
-            (array): TODO
-        '''
-        igrnds = cls.two_halo_mass_integrand(ks, z, omega_b, omega_m, h,
-                                             hmb_m, hmb_z, hmb_b,
-                                             hmf_m, hmf_z, hmf_f,
-                                             nM=nM)
-
-        P_lin = interp2d(P_lin_k, P_lin_z, P_lin)
-
-        Ps = P_lin(ks, z)
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.plot(ks, Ps, label='matter_power_lin')
-        # plt.plot(ks, igrnds, label='halo profile')
-        # plt.plot(ks, Ps * igrnds, label='product')
-        # plt.legend()
-        # plt.loglog()
-        radial_term = inverse_spherical_fourier_transform(rs, ks, Ps * igrnds,
-                                                          limit=limit,
-                                                          epsabs=epsabs)
-
-        # TODO - mass bias
-        return radial_term
-
-    @classmethod
-    def two_halo_mass_integrand(cls, ks, z,
-                                omega_b, omega_m, h,
-                                hmb_m, hmb_z, hmb_b,
-                                hmf_m, hmf_z, hmf_f,
-                                nr=1000, nM=1000,
-                                limit=1000, epsabs=1e-21):
-        '''
-        A mass-weighted pressure profile, in Fourier space.
-        '''
-        rs = np.geomspace(1 / ks.max(), 2 * np.pi / ks.min(), nr)
-        mass_weighted = cls.mass_weighted_profile(rs, z, omega_b, omega_m, h,
-                                                  hmb_m, hmb_z, hmb_b,
-                                                  hmf_m, hmf_z, hmf_f,
-                                                  nM=nM)
-
-        return forward_spherical_fourier_transform(ks, rs, mass_weighted,
-                                                   limit=limit, epsabs=epsabs)
-
-    @classmethod
-    def mass_weighted_profile(cls, rs, z, omega_b, omega_m, h,
-                              hmb_m, hmb_z, hmb_b,
-                              hmf_m, hmf_z, hmf_f,
-                              nM=1000):
-        '''
-        Computes the mass weighted pressure profile:
-
-        :math:`P_{mean}(r | z) = \int dM dn/dM b(M) P(r | M, z)`
-
-        Args:
-            rs (array): The radii at which to compute the mean pressure.
-            omega_b (float): Baryon fraction.
-            omega_m (float): Matter fraction.
-            hmb_m (1d array): The mass points at which the halo mass bias is \
-                              evaluated. Units: :math:`M_{sun}`.
-            hmb_z (1d array): The redshifts at which the halo mass bias is \
-                              evaluated.
-            hmb_b (2d array): The evaluated halo mass bias, for each (m, z) \
-                              combination.
-            hmf_m (1d array): The mass points at which the halo mass function \
-                              is evaluated. Units: :math:`M_{sun}`.
-            hmf_z (1d array): The redshifts at which the halo mass function is \
-                              evaluated.
-            hmf_f (2d array): The evaluated halo mass function, for each \
-                              (m, z) combination.
-
-        Returns:
-            (array): Mean pressure for each r.
-        '''
-        hmb = interp2d(hmb_m, hmb_z, hmb_b)
-        hmf = interp2d(hmf_m, hmf_z, hmf_f)
-
-        Mmin = max(hmb_m.min(), hmf_m.min())
-        Mmax = min(hmb_m.max(), hmf_m.max())
-        # nM = max(hmf_m.size, hmb_m.size, nM)
-
-        Ms = np.geomspace(Mmin, Mmax, nM)
-        lnMs = np.log(Ms)
-
-        profiles = np.zeros((nM, rs.size), dtype=np.double)
-        for Mi, M in enumerate(Ms):
-            pprofile = cls(M, z, omega_b, omega_m, h).pressure(rs)
-            profiles[Mi] = pprofile
-
-        weighted_profiles = np.zeros_like(rs, dtype=np.double)
-        for ri, r in enumerate(rs):
-            igrnd = Ms * hmf(Ms, z) * hmb(Ms, z) * profiles[:, ri]
-            weighted_profiles[ri] = integrate_spline(lnMs, igrnd,
-                                                     lnMs[0], lnMs[-1])
-
-        return weighted_profiles
-
     def _projected_pressure(self, r, dist=8, epsrel=1e-3):
         '''
         THIS FUNCTION IS FOR TESTING ONLY.
@@ -928,22 +779,22 @@ class BBPSProfile:
         Necessary for computing the 2-halo term.
 
         Args:
-            k (float or array): Frequencies to compute FFT at, \
+            k (float or array): Frequencies to compute FFT at,
                                 :math:`1/\\text{Mpc}`
             M (float): Cluster :math:`M_{\\Delta}`, in Msun.
             z (float): Cluster redshift.
             omega_b (float): Baryon fraction.
             omega_m (float): Matter fraction.
-            params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift \
-                    dependence parameters A, :math:`\\alpha_m`, \
-                    :math:`\\alpha_z`, respectively. See BBPS2 Equation 11. \
-                    Default is BBPS2's \ best-fit.
-            params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift \
-                    dependence, same as `params_P_0`. Default is BBPS2's \
-                    best-fit.
-            params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
-                    dependence, same as `params_P_0`. Default is BBPS2's \
-                    best-fit.
+            params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift
+                                dependence parameters A, :math:`\\alpha_m`,
+                                :math:`\\alpha_z`, respectively. See BBPS2
+                                Equation 11.  Default is BBPS2's best-fit.
+            params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift
+                                dependence, same as `params_P_0`. Default is
+                                BBPS2's best-fit.
+            params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift
+                                 dependence, same as `params_P_0`. Default is
+                                 BBPS2's best-fit.
 
         Returns:
             float or array: The FFT for each `k`.
@@ -984,3 +835,287 @@ class BBPSProfile:
         if return_errs:
             return up_out, up_err_out
         return up_out
+
+
+class TwoHaloProfile:
+    '''
+    A general interface for computing the 2-halo halo-pressure correlation
+    function, :math:`\\xi_{h, P}^{2h}(r | M, z)`.
+
+    By default, the halo mass functions (`hmb_[mzb]`, `hmf_[mzf]`) are expected
+    to use a **mean mass overdensity** halo definition. The one halo model is
+    expected to use a **critical mass overdensity** halo definition.
+    The `mdelta_m` and `mdelta_c` arguments are used in an interpolation table
+    to convert between them.
+
+    If these assumptions are false, use the `halo_mass_def` and `one_halo_def`
+    args to adjust accordingly.
+
+    Args:
+            omega_b (float): Baryon fraction.
+            omega_m (float): Matter fraction.
+            h (float): Reduced Hubble constant,
+                       :math:`H_0 / (100 km s^{-1} Mpc^{-1})`.
+            hmb_m (1d array): The mass points at which the halo mass bias is
+                              evaluated. Units: :math:`M_{sun}`.
+                              Mass definition: :math:`M_{200m}`.
+            hmb_z (1d array): The redshifts at which the halo mass bias is
+                              evaluated.
+            hmb_b (2d array): The evaluated halo mass bias, for each (m, z)
+                              combination.
+            hmf_m (1d array): The mass points at which the halo mass function
+                              is evaluated. Units: :math:`M_{sun}`.
+                              Mass definition: :math:`M_{200m}`.
+            hmf_z (1d array): The redshifts at which the halo mass function is
+                              evaluated.
+            hmf_f (2d array): The evaluated halo mass function, for each
+                              (m, z) combination.
+            P_lin_k (1d array): The wavenumbers at which the linear matter
+                                power spectrum is evaluated.
+            P_lin_z (1d array): The redshifts at which the linear matter power
+                                spectrum is evaluated.
+            P_lin (2d array): The evaluated linear matter power spectrum, for
+                              each (k, z) combination.
+            mdelta_m (1d array): A set of *mean overdensity* halo masses.
+            mdelta_c (1d array): A set of *critical overdensity* halo masses
+                                 corresponding to `mdelta_m`. Needed to convert
+                                 between the two halo definitions.
+            halo_mass_def (string): One of "mean", "critical". The mass
+                                    definiton used in `hmf_m` and `hmb_m`.
+            one_halo_def (string): One of "mean", "critical". The mass definiton
+                                   used by `one_halo`.
+            one_halo (class): The 1-halo pressure model to use, default is
+                              :class:`BBPSProfile`. TODO: Document expected
+                              arguments.
+            one_halo_args (iterable): Any extra arguments to give the `one_halo`
+                                      class, e.g. profile parameters.
+            one_halo_kwargs (dictionary): Any extra keyword arguments to give
+                                          the `one_halo` class, e.g. profile
+                                          parameters.
+    '''
+    def __init__(self, omega_b, omega_m, h,
+                 hmb_m, hmb_z, hmb_b,
+                 hmf_m, hmf_z, hmf_f,
+                 P_lin_k, P_lin_z, P_lin,
+                 mdelta_m, mdelta_c,
+                 halo_mass_def='mean',
+                 one_halo_def='critical',
+                 one_halo=BBPSProfile, one_halo_args=(), one_halo_kwargs={},
+                 allow_weird_h=False):
+        # To help user get the right units
+        if not allow_weird_h:
+            if h > 2 or h < 0.1:
+                raise ValueError('The **reduced** Hubble constant is needed')
+
+        self.omega_b = omega_b
+        self.omega_m = omega_m
+        self.h = h
+
+        self.hmb = interp2d(hmb_m, hmb_z, hmb_b)
+        self.hmf = interp2d(hmf_m, hmf_z, hmf_f)
+        self.P_lin = interp2d(P_lin_k, P_lin_z, P_lin)
+
+        # TODO: these should be unnecessary if halo_mass_def == one_halo_def
+        self.mean_to_critical = interp1d(mdelta_m, mdelta_c)
+        self.critical_to_mean = interp1d(mdelta_c, mdelta_m)
+
+        if halo_mass_def not in ('mean', 'critical'):
+            raise ValueError('Invalid mass def: {}'.format(halo_mass_def))
+        if one_halo_def not in ('mean', 'critical'):
+            raise ValueError('Invalid mass def: {}'.format(one_halo_def))
+
+        self.halo_mass_def = halo_mass_def
+        self.one_halo_def = one_halo_def
+
+        self._profile_model = one_halo
+        self._one_halo_args = one_halo_args
+        self._one_halo_kwargs = one_halo_kwargs
+
+    def projected_two_halo(self, rs_proj, rs_2h, ks, z,
+                           nM=1000, limit=1000,
+                           epsabs_2h=1e-21,
+                           epsabs_abel=1e-23,
+                           epsrel_abel=1e-3):
+        '''
+        Computes the projected 2-halo term.
+
+        Args:
+            rs_proj (array): The transverse distances at which to project.
+                             Units: :math:`Mpc`
+            rs_2h (array): The radii at which to compute the 3D 2-halo term.
+                           (The projection is performed on an interpolation
+                           table, this is the spacing of that interpolation
+                           table.)
+                           Units: :math:`Mpc`
+            ks (array): Wavenumbers to use for computing 3D 2h term.
+                        Units: :math:`Mpc^{-1}`.
+            z (float): Redshift to use.
+
+        Returns:
+            (array): The projected 2-halo term, corresponding to `rs_proj`. \
+                    Units: :math:`M_{sun} s^{-2}`.
+        '''
+        two_halo_3d = self.two_halo(rs_2h, ks, z,
+                                    nM=nM, limit=limit,
+                                    epsabs=epsabs_2h)
+
+        return abel_transform(rs_2h, two_halo_3d, rs_proj,
+                              limit=limit,
+                              epsabs=epsabs_abel,
+                              epsrel=epsrel_abel) / (1 + z)
+
+    def two_halo(self, rs, ks, z,
+                 nM=1000, limit=1000,
+                 epsabs=1e-21):
+        '''
+        Computes the 3D 2-halo halo-pressure correlation
+        :math:`\\xi_{h, P}(r | M, z)`:
+
+        :math:`\\xi_{h,P}(r | M, z) = \\int_0^\infty dk \\frac{k^2}{2 \\pi^2}\
+               sin(kr) / (kr) P_{h, P}(k | M, z)`
+        :math:`P_{h, P}(k | M, z) = b(M, z) P_{lin}(k, z) \\int_0^\infty\
+               dM^\\prime \\frac{dn}{dM^\\prime} b(M^\\prime, z)\
+               u_P(k | M^\\prime, z)`
+        :math:`u_P(k | M, z) = \int_0^\\infty dr 4\\pi r^2 sin(kr)/(kr)\
+               P_e(r | M^\\prime, z)`
+
+        Args:
+            rs (array of float): The radii at which to compute :math:`\\xi`.
+            ks (array of float): The wavenumbers to compute the Fourier
+                                 transform.
+            z (float): Redshift to use.
+
+        Returns:
+            (array): The 3D halo-pressure correlation at the radii `rs`. Same \
+                     shape as `rs`.
+        '''
+        igrnds = self.two_halo_mass_integrand(ks, z,
+                                              nM=nM)
+
+        Ps = self.P_lin(ks, z)
+        radial_term = inverse_spherical_fourier_transform(rs, ks, Ps * igrnds,
+                                                          limit=limit,
+                                                          epsabs=epsabs)
+
+        # TODO - mass bias
+        return radial_term
+
+    def two_halo_mass_integrand(self, ks, z,
+                                nr=1000, nM=1000,
+                                limit=1000, epsabs=1e-21):
+        '''
+        A mass-weighted pressure profile, in Fourier space.
+
+        Args:
+            ks (array): The wavenumbers at which to compute the FT.
+                        Units: :math:`Mpc^{-1}`
+            z (float): Redshift to use.
+
+        Returns:
+            (array): Spherical FT of distribution corresponding to `ks`.
+        '''
+        rs = np.geomspace(1 / ks.max(), 2 * np.pi / ks.min(), nr)
+        mass_weighted = self.mass_weighted_profile(rs, z,
+                                                   nM=nM)
+
+        return forward_spherical_fourier_transform(ks, rs, mass_weighted,
+                                                   limit=limit, epsabs=epsabs)
+
+    def mass_weighted_profile(self, rs, z, nM=1000):
+        '''
+        Computes the mass weighted pressure profile:
+
+        :math:`P_{mean}(r | z) = \int dM dn/dM b(M) P(r | M, z)`
+
+        Args:
+            rs (array): The radii at which to compute the mean pressure.
+                        Units: :math:`Mpc`.
+            z (float): Redshift to use.
+
+        Returns:
+            (array): Mean pressure for each r.
+        '''
+
+        Mmin = max(self.hmb.x.min(), self.hmf.x.min())
+        Mmax = min(self.hmb.x.max(), self.hmf.x.max())
+
+        Ms_halo_mass = np.geomspace(Mmin, Mmax, nM)
+        lnMs_halo_mass = np.log(Ms_halo_mass)
+
+        # If the one-halo and halo-mass tables are in different mass
+        # definitions, we need to convert them.
+        if self.halo_mass_def != self.one_halo_def:
+            if self.one_halo_def == 'critical':
+                Ms_one_halo = self.mean_to_critical(Ms_halo_mass)
+            if self.one_halo_def == 'mean':
+                Ms_one_halo = self.critical_to_mean(Ms_halo_mass)
+
+        # First compute a grid of the profile in mass-radius
+        profiles = np.zeros((nM, rs.size), dtype=np.double)
+        for Mi, M in enumerate(Ms_one_halo):
+            pmodel = self._profile_model(M, z,
+                                         self.omega_b, self.omega_m, self.h,
+                                         *self._one_halo_args,
+                                         **self._one_halo_kwargs)
+            profiles[Mi] = pmodel.pressure(rs)
+
+        # Perform the weighted integral
+        # \int dx f(x) = \int d(lnx) x f(x)
+        weighted_profiles = np.zeros_like(rs, dtype=np.double)
+        for ri, r in enumerate(rs):
+            igrnd = (Ms_halo_mass * self.hmf(Ms_halo_mass, z)
+                                  * self.hmb(Ms_halo_mass, z)
+                                  * profiles[:, ri])
+            weighted_profiles[ri] = integrate_spline(lnMs_halo_mass, igrnd,
+                                                     lnMs_halo_mass[0],
+                                                     lnMs_halo_mass[-1])
+
+        return weighted_profiles
+
+    def projected_convolved(self, da, z, rs_proj, rs_2h, ks,
+                            theta=15, n=200,
+                            psf_sigma=5 / np.sqrt(2 * np.log(2)),
+                            nM=1000, limit=1000,
+                            epsabs_2h=1e-21,
+                            epsabs_abel=1e-23,
+                            epsrel_abel=1e-3):
+        '''
+        Computes the 2halo term as the projected-and-convolved Compton-y
+        parameter.
+
+        Args:
+            da (float): Angular diameter distance at `z`.
+            z (float): Redshift to use.
+            rs_proj (array): The transverse distances at which to project.
+                             Units: :math:`Mpc`
+            rs_2h (array): The radii at which to compute the 3D 2-halo term.
+                           (The projection is performed on an interpolation
+                           table, this is the spacing of that interpolation
+                           table.)
+                           Units: :math:`Mpc`
+            ks (array): Wavenumbers to use for computing 3D 2h term.
+                        Units: :math:`Mpc^{-1}`.
+            theta (float): Half-width of the convolved image, in arcmin.
+            n (int): The side length of the image, in pixels. The convolution
+                     is performed on an n x n image.
+            psf_sigma (float): The standard deviation of the Gaussian beam. The
+                               default is the Planck beam, in arcmin.
+
+        Returns:
+            (2-tuple of array): Pair of (rs, smoothed ys). `rs` runs from \
+                                :math:`(theta / (n // 2)) / 2` to \
+                                :math:`\\sqrt(2) theta`, and contains `n` \
+                                points.
+        '''
+        projection = self.projected_two_halo(rs_proj, rs_2h, ks, z,
+                                             nM=nM, limit=limit,
+                                             epsabs_2h=epsabs_2h,
+                                             epsabs_abel=epsabs_abel,
+                                             epsrel_abel=epsrel_abel)
+        interp = interp1d(rs_proj, projection)
+
+        def image_func(thetas):
+            # Convert arcmin to physical transverse distance
+            return interp(thetas * da / 60 * np.pi / 180)
+        return create_convolved_profile(image_func,
+                                        theta=theta, n=n, sigma=psf_sigma)
