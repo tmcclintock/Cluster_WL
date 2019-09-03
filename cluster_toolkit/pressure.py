@@ -10,7 +10,8 @@ This module implements pressure profiles presented by `Battaglia et al. 2012
 <https://ui.adsabs.harvard.edu/abs/2012ApJ...758...75B/abstract>`_, referred to
 here as BBPS. Calculations related to it are in the class :class:`BBPSProfile`.
 
-The best-fit 3D profile is implemented in :meth:`BBPSProfile.pressure`. Its 3D
+The best-fit 3D one-halo profile, :math:`\\xi_{h, P}^{1h}(r | M, z)`,
+from BBPS is implemented in :meth:`BBPSProfile.pressure`. Its 3D
 projection and the projected Compton-y parameter are computed by
 :meth:`BBPSProfile.projected_pressure` and :meth:`BBPSProfile.compton_y`,
 respectively.
@@ -29,7 +30,6 @@ A general class for computing the 2-halo correlation is given in
 :class:`TwoHaloProfile`, which uses the BBPS profile by default.
 
 TODO: Document expected 1-halo arguments used by the 2-halo class.
-
 '''
 
 from astropy.convolution import Gaussian2DKernel, convolve_fft
@@ -355,7 +355,9 @@ class BBPSProfile:
            1.78752532e-24, 1.05882458e-24])
 
     Args:
-        M (float): Cluster :math:`M_{\\Delta}`, in Msun.
+        M (float): Cluster :math:`M_{\\Delta c}`, in Msun.
+                   **NB** this is the **CRITICAL MASS OVERDENSITY** mass
+                   definition.
         z (float): Cluster redshift.
         h (float): The reduced Hubble constant, `H_0 / (100 km / s / Mpc)`
         omega_b (float): Baryon fraction.
@@ -840,8 +842,14 @@ class TwoHaloProfile:
     A general interface for computing the 2-halo halo-pressure correlation
     function, :math:`\\xi_{h, P}^{2h}(r | M, z)`.
 
-    TODO: Finalize and document the :math:`M_{\\Delta m}` v
-    :math:`M_{\\Delta c}` business.
+    By default, the halo mass functions (`hmb_[mzb]`, `hmf_[mzf]`) are expected
+    to use a **mean mass overdensity** halo definition. The one halo model is
+    expected to use a **critical mass overdensity** halo definition.
+    The `mdelta_m` and `mdelta_c` arguments are used in an interpolation table
+    to convert between them.
+
+    If these assumptions are false, use the `halo_mass_def` and `one_halo_def`
+    args to adjust accordingly.
 
     Args:
             omega_b (float): Baryon fraction.
@@ -872,6 +880,10 @@ class TwoHaloProfile:
             mdelta_c (1d array): A set of *critical overdensity* halo masses
                                  corresponding to `mdelta_m`. Needed to convert
                                  between the two halo definitions.
+            halo_mass_def (string): One of "mean", "critical". The mass
+                                    definiton used in `hmf_m` and `hmb_m`.
+            one_halo_def (string): One of "mean", "critical". The mass definiton
+                                   used by `one_halo`.
             one_halo (class): The 1-halo pressure model to use, default is
                               :class:`BBPSProfile`. TODO: Document expected
                               arguments.
@@ -903,6 +915,7 @@ class TwoHaloProfile:
         self.hmf = interp2d(hmf_m, hmf_z, hmf_f)
         self.P_lin = interp2d(P_lin_k, P_lin_z, P_lin)
 
+        # TODO: these should be unnecessary if halo_mass_def == one_halo_def
         self.mean_to_critical = interp1d(mdelta_m, mdelta_c)
         self.critical_to_mean = interp1d(mdelta_c, mdelta_m)
 
