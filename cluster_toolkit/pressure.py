@@ -42,6 +42,7 @@ from scipy.interpolate import interp1d, interp2d
 _BBPS_params_P_0 = (18.1, 0.154, -0.758)
 _BBPS_params_x_c = (0.497, -0.00865, 0.731)
 _BBPS_params_beta = (4.35, 0.0393, 0.415)
+_pressure_to_y = 1.61574202e+15
 
 
 def _rho_crit(z, omega_m, h):
@@ -657,12 +658,11 @@ class BBPSProfile:
         # The constant is \sigma_T / (m_e * c^2), the Thompson cross-section
         # divided by the mass-energy of the electron, in units of s^2 Msun^{-1}.
         # Source: Astropy constants and unit conversions.
-        cy = 1.61574202e+15
         # We need to convert from GAS pressure to ELECTRON pressure. This is the
         # equation to do so, see BBPS p. 3.
-        ch = (2 * Xh + 2) / (5 * Xh + 3)
-        return ch * cy * self.projected_pressure(r, limit=limit,
-                                                 epsabs=epsabs, epsrel=epsrel)
+        ch = (2 * Xh + 2) / (5 * Xh + 3) * _pressure_to_y
+        return ch * self.projected_pressure(r, limit=limit,
+                                            epsabs=epsabs, epsrel=epsrel)
 
     def convolved_y(self, da, theta=15, n=200,
                     sigma=5 / np.sqrt(2 * np.log(2)),
@@ -931,11 +931,11 @@ class TwoHaloProfile:
         self._one_halo_args = one_halo_args
         self._one_halo_kwargs = one_halo_kwargs
 
-    def projected_two_halo(self, rs_proj, rs_2h, ks, z,
-                           nM=1000, limit=1000,
-                           epsabs_2h=1e-21,
-                           epsabs_abel=1e-23,
-                           epsrel_abel=1e-3):
+    def projected(self, rs_proj, rs_2h, ks, z,
+                  nM=1000, limit=1000,
+                  epsabs_2h=1e-21,
+                  epsabs_abel=1e-23,
+                  epsrel_abel=1e-3):
         '''
         Computes the projected 2-halo term.
 
@@ -963,6 +963,40 @@ class TwoHaloProfile:
                               limit=limit,
                               epsabs=epsabs_abel,
                               epsrel=epsrel_abel) / (1 + z)
+
+    def compton_y(self, rs_proj, rs_2h, ks, z,
+                  Xh=0.76,
+                  nM=1000, limit=1000,
+                  epsabs_2h=1e-21,
+                  epsabs_abel=1e-23,
+                  epsrel_abel=1e-3):
+        '''
+        Computes the Compton-y 2-halo term, i.e. the projected line-of-sight
+        CMB distortion. It is dimensionless.
+
+        Args:
+            rs_proj (array): The transverse distances at which to project.
+                             Units: Physical (non-comoving) :math:`Mpc`
+            rs_2h (array): The radii at which to compute the 3D 2-halo term.
+                           (The projection is performed on an interpolation
+                           table, this is the spacing of that interpolation
+                           table.)
+                           Units: Physical (non-comoving) :math:`Mpc`
+            ks (array): Wavenumbers to use for computing 3D 2h term.
+                        Units: :math:`Mpc^{-1}`.
+            z (float): Redshift to use.
+            Xh (float): Primordial hydrogen mass fraction. Necessary to compute
+                        the *electron pressure* from the *gas pressure*.
+
+        Returns:
+            (array): The unitless projected 2-halo term, at `rs_proj`.
+        '''
+        const = (2 * Xh + 2) / (5 * Xh + 3) * _pressure_to_y
+        return const * self.projected(rs_proj, rs_2h, ks, z,
+                                      nM=1000, limit=1000,
+                                      epsabs_2h=1e-21,
+                                      epsabs_abel=1e-23,
+                                      epsrel_abel=1e-3)
 
     def two_halo(self, rs, ks, z,
                  nM=1000, limit=1000,
@@ -1072,13 +1106,14 @@ class TwoHaloProfile:
 
         return weighted_profiles
 
-    def projected_convolved(self, da, z, rs_proj, rs_2h, ks,
-                            theta=15, n=200,
-                            psf_sigma=5 / np.sqrt(2 * np.log(2)),
-                            nM=1000, limit=1000,
-                            epsabs_2h=1e-21,
-                            epsabs_abel=1e-23,
-                            epsrel_abel=1e-3):
+    def convolved_y(self, da, z, rs_proj, rs_2h, ks,
+                    Xh=0.76,
+                    theta=15, n=200,
+                    psf_sigma=5 / np.sqrt(2 * np.log(2)),
+                    nM=1000, limit=1000,
+                    epsabs_2h=1e-21,
+                    epsabs_abel=1e-23,
+                    epsrel_abel=1e-3):
         '''
         Computes the 2halo term as the projected-and-convolved Compton-y
         parameter.
@@ -1107,12 +1142,12 @@ class TwoHaloProfile:
                                 :math:`\\sqrt(2) theta`, and contains `n` \
                                 points.
         '''
-        projection = self.projected_two_halo(rs_proj, rs_2h, ks, z,
-                                             nM=nM, limit=limit,
-                                             epsabs_2h=epsabs_2h,
-                                             epsabs_abel=epsabs_abel,
-                                             epsrel_abel=epsrel_abel)
-        interp = interp1d(rs_proj, projection)
+        projection = self.projected(rs_proj, rs_2h, ks, z,
+                                    nM=nM, limit=limit,
+                                    epsabs_2h=epsabs_2h,
+                                    epsabs_abel=epsabs_abel,
+                                    epsrel_abel=epsrel_abel)
+        interp = interp1d(rs_proj, projection * _pressure_to_y)
 
         def image_func(thetas):
             # Convert arcmin to physical transverse distance
