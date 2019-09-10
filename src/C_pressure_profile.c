@@ -339,7 +339,6 @@ forward_circular_fourier_transform(double *out, double *out_err,
                                    const double *rs, const double *fs, unsigned Nr,
                                    unsigned limit, double epsabs, double epsrel)
 {
-
     struct interp_integrand_args args;
     int rc = interp_integrand_args_alloc(&args, rs, fs, Nr);
     if (rc != GSL_SUCCESS)
@@ -363,7 +362,7 @@ forward_circular_fourier_transform(double *out, double *out_err,
     if (rc == GSL_SUCCESS) {
         // Apply normalization for reverse Fourier transform
         // (See comment above spherical_fourier_transform)
-        for (unsigned i = 0; i < Nr; i++) {
+        for (unsigned i = 0; i < Nk; i++) {
             out[i] *= 2 * M_PI;
             if (out_err)
                 out_err[i] *= 2 * M_PI;
@@ -577,10 +576,6 @@ circular_fourier_transform(double *out, double *out_err,
 
     int retcode = GSL_SUCCESS;
     for (unsigned i = 0; i < Nk; i++) {
-        double this_k = ks[i];
-        fn.params = &this_k;
-        double result = 0.0, err = 0.0;
-
         // Set params for this iteration
         struct circular_ft_integrand_params params = {
             .k = ks[i],
@@ -590,6 +585,7 @@ circular_fourier_transform(double *out, double *out_err,
         fn.params = (void *) &params;
 
         // The qawf function performs a Fourier transform
+        double result = 0.0, err = 0.0;
         retcode = gsl_integration_qagiu(&fn,
                                         // Integrate from 0 to +\inf
                                         0.0,

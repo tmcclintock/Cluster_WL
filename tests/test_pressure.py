@@ -211,6 +211,46 @@ def test_2d_fourier():
         assert np.all(passes)
 
 
+def test_proj_slice():
+    '''
+    According to the projection-slice theorem, the 2d fourier transform of an
+    Abel transform (LOS projection) should be equivalent to a slice of the
+    3D fourier transform.
+
+    In the language of the functions here, this means that:
+
+        forward_circular_fourier_transform(abel_transform(f)) ==
+            forward_spherical_fourier_transform(f)
+
+    The proj.-sl. thm is a mathematical fact, so this test is a sanity check
+    that our functions are properly normalized, and work well enough to use it.
+    '''
+    def gaussian(r, sigma):
+        '''
+        A 3d gaussian
+        '''
+        const = (2 * np.pi)**(1.5) * sigma**3
+        return np.exp(-r*r / 2 * (sigma * sigma)) / const
+
+    rs = np.geomspace(0.01, 20, 1000)
+    r_trans = np.geomspace(0.01, 10, 1000)
+    ks = np.geomspace(0.1, 10, 100)
+
+    epsabs = 1e-3
+    epsrel = 1e-3
+    for sigma in [0.5, 1, 2]:
+        g = gaussian(rs, sigma)
+        abel_transformed = pp.abel_transform(rs, g, r_trans)
+        ft_2d = pp.forward_circular_fourier_transform(ks, r_trans, abel_transformed,
+                                                      epsabs=epsabs, epsrel=epsrel)
+
+        ft_3d = pp.forward_spherical_fourier_transform(ks, rs, g,
+                                                       epsabs=epsabs)
+
+        diff = np.abs(ft_2d - ft_3d)
+        assert np.all((diff < 10*epsabs) | ((diff / np.abs(ft_3d)) < 5*epsrel))
+
+
 def test_spline_integration():
     xs = np.arange(0.5, 10, 0.5)
 
