@@ -115,7 +115,7 @@ def test_y_projection():
             assert abs((oury - y) / y) < 1e-2
 
 
-def test_fourier():
+def test_pressure_fourier():
     cosmo = get_cosmology(0)
     Ms = [2e13, 5e14, 5e14, 2e15]
     zs = [0.1, 0.2, 0.3]
@@ -131,7 +131,7 @@ def test_fourier():
         assert np.all(np.abs((ps[msk] - ps_C[msk]) / ps[msk]) < 1e-2)
 
 
-def test_inverse_fourier():
+def test_inverse_3d_fourier():
     # Create our test halo
     M, z = 1e14, 0.2
     omega_b, omega_m = 0.04, 0.28
@@ -156,7 +156,11 @@ def test_inverse_fourier():
     assert np.all(passes)
 
 
-def test_two_way_fourier():
+def test_two_way_3d_fourier():
+    '''
+    Ensure that forward and backward 3d symmetric FTs are properly
+    normalized inverses.
+    '''
     rs = np.geomspace(0.1, 5, 75)
     real = np.exp(-rs*rs / 2)
     ks = np.geomspace(1 / (5 * 2 * np.pi), 20, 75)
@@ -168,6 +172,43 @@ def test_two_way_fourier():
     diff = np.abs(real - back)
     passes = ((diff / real) < 1e-2) | (diff < epsabs)
     assert np.all(passes)
+
+
+def test_2d_fourier():
+    '''
+    Ensure that forward and backward 2d symmetric FTs are properly
+    normalized inverses.
+    '''
+    def gaussian_2d(r, sigma):
+        const = 1 / (2 * np.pi * sigma * sigma)
+        return const * np.exp(-r*r / (2 * sigma * sigma))
+
+    rs = np.geomspace(0.01, 10, 2000)
+    ks = np.copy(rs)
+
+    epsabs = 1e-5
+    epsrel = 1e-3
+
+    for sigma in [0.5, 1, 2]:
+        real = gaussian_2d(rs, sigma)
+        ftd = pp.forward_circular_fourier_transform(ks, rs, real,
+                                                    epsabs=epsabs,
+                                                    epsrel=epsrel)
+
+        # Inverse should be e^(-k^2 \sigma^2 / 2)
+        expected_fsp = np.exp(-ks*ks * sigma*sigma / 2)
+        diff_fsp = np.abs(expected_fsp - ftd)
+        passes_fsp = ((diff_fsp / expected_fsp) < epsrel) | (diff_fsp < epsabs)
+        assert np.all(passes_fsp)
+
+        back = pp.inverse_circular_fourier_transform(rs, ks, ftd,
+                                                     epsabs=epsabs,
+                                                     epsrel=epsrel)
+
+        # Make sure we reconstruct original
+        diff = np.abs(real - back)
+        passes = ((diff / real) < epsrel) | (diff < epsabs)
+        assert np.all(passes)
 
 
 def test_spline_integration():
@@ -207,11 +248,10 @@ def test_abel_transform():
 
     for a in np.geomspace(0.1, 10, 10):
         result = pp.abel_transform(a*xs, ys, rs)
-        truth = 2 * np.sqrt(a*a - rs[rs<=a]**2)
+        truth = 2 * np.sqrt(a*a - rs[rs <= a]**2)
 
-        assert (np.abs(truth - result[rs<=a]) / truth <= 1e-2).all()
-        assert (result[rs>a] == 0).all()
-
+        assert (np.abs(truth - result[rs <= a]) / truth <= 1e-2).all()
+        assert (result[rs > a] == 0).all()
 
     # Abel tophat of Gaussian
     epsabs = 1e-18
@@ -263,8 +303,10 @@ def test_2halo():
     ks = np.geomspace(0.1, 20, 100)
     z = 0.2
     # Create mass def interpolation table
-    m200c_lo = convert_mass(cosmo['hmf_m'].min(), z, mdef_in='200m', mdef_out='200c')
-    m200c_hi = convert_mass(cosmo['hmf_m'].max(), z, mdef_in='200m', mdef_out='200c')
+    m200c_lo = convert_mass(cosmo['hmf_m'].min(), z,
+                            mdef_in='200m', mdef_out='200c')
+    m200c_hi = convert_mass(cosmo['hmf_m'].max(), z,
+                            mdef_in='200m', mdef_out='200c')
     m200c = np.geomspace(m200c_lo * 0.95, m200c_hi * 1.05, cosmo['hmf_m'].size)
     m200m = convert_mass(m200c, z, mdef_in='200c', mdef_out='200m')
     # Do two-halo computation

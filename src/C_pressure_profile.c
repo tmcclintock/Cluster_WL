@@ -1,7 +1,10 @@
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_integration.h>
 #include <gsl/gsl_interp.h>
+#include <gsl/gsl_sf_bessel.h>
 #include <math.h>
+
+#include "C_pressure_profile.h"
 
 // G in Mpc^3 Msun^{-1} s^{-2}
 // (source: astropy's constants module and unit conversions) 
@@ -19,13 +22,34 @@
 #define RHO_CRIT (2.77536627e+11)
 
 
-// Computes the Fourier transform of a spherically symmetric function f_r
-// at a set of wavenumbers ks.
+struct interp_integrand_args {
+    gsl_interp *F;
+    const double *xs;
+    const double *ys;
+    int retcode;
+};
+
+static double interp_integrand(double x, void *params);
+static int interp_integrand_args_alloc(struct interp_integrand_args *args,
+                                       const double *xs, const double *ys,
+                                       unsigned N);
+static int interp_integrand_args_free(struct interp_integrand_args *);
+
+// Computes the (unnormalized) Fourier transform of a spherically symmetric
+// function f_r at a set of wavenumbers ks.
 static int
 spherical_fourier_transform(double *out, double *out_err,
                             const double *ks, unsigned Nk,
                             gsl_function *f_r,
                             unsigned limit, double epsabs);
+
+// Computes the (unnormalized) Fourier transform of a circularly symmetric
+// function f_r at a set of wavenumbers ks.
+static int
+circular_fourier_transform(double *out, double *out_err,
+                           const double *ks, unsigned Nk,
+                           gsl_function *f_r,
+                           unsigned limit, double epsabs, double epsrel);
 
 // Computes the line-of-sight projection of a spherically symmetric function
 // f_r at a set of transverse radii rs.
@@ -192,36 +216,23 @@ inverse_spherical_fourier_transform(double *out, double *out_err,
                                     const double *ks, const double *Fs, unsigned Nk,
                                     unsigned limit, double epsabs)
 {
-    gsl_interp *F_interp = gsl_interp_alloc(gsl_interp_linear, Nk);
-    if (!F_interp)
-        return GSL_ENOMEM;
-
-    int rc = gsl_interp_init(F_interp, ks, Fs, Nk);
+    struct interp_integrand_args args;
+    int rc = interp_integrand_args_alloc(&args, ks, Fs, Nk);
     if (rc != GSL_SUCCESS)
         return rc;
 
-    double
-    integrand(double k, void *params)
-    {
-        double F = 0.0;
-        int retcode = gsl_interp_eval_e(F_interp, ks, Fs, k, NULL, &F);
-        if (retcode == GSL_EDOM) {
-            // If below minimum - we return F(k_min)
-            if (k < ks[0])
-                return Fs[0];
-            return 0.0;
-        }
-        return F;
-    }
-
     gsl_function f_k;
-    f_k.params = NULL;
-    f_k.function = integrand;
+    f_k.params = &args;
+    f_k.function = interp_integrand;
 
     rc = spherical_fourier_transform(out, out_err,
                                      rs, Nr,
                                      &f_k,
                                      limit, epsabs * 2 * M_PI * M_PI);
+
+    // Handle errors in integrand (as opposed to integrator)
+    if (args.retcode != GSL_SUCCESS)
+        rc = args.retcode;
 
     if (rc == GSL_SUCCESS) {
         // Apply normalization for reverse Fourier transform
@@ -233,10 +244,9 @@ inverse_spherical_fourier_transform(double *out, double *out_err,
         }
     }
 
-    gsl_interp_free(F_interp);
+    interp_integrand_args_free(&args);
     return rc;
 }
-
 
 
 /// Performs a forward fourier-transform on the function f(r)
@@ -247,36 +257,23 @@ forward_spherical_fourier_transform(double *out, double *out_err,
                                     const double *rs, const double *fs, unsigned Nr,
                                     unsigned limit, double epsabs)
 {
-    gsl_interp *f_interp = gsl_interp_alloc(gsl_interp_linear, Nr);
-    if (!f_interp)
-        return GSL_ENOMEM;
-
-    int rc = gsl_interp_init(f_interp, rs, fs, Nr);
+    struct interp_integrand_args args;
+    int rc = interp_integrand_args_alloc(&args, rs, fs, Nr);
     if (rc != GSL_SUCCESS)
         return rc;
 
-    double
-    integrand(double r, void *params)
-    {
-        double f = 0.0;
-        int retcode = gsl_interp_eval_e(f_interp, rs, fs, r, NULL, &f);
-        if (retcode == GSL_EDOM) {
-            // If below minimum - we return f(r_min)
-            if (r < rs[0])
-                return fs[0];
-            return 0.0;
-        }
-        return f;
-    }
-
     gsl_function f_r;
-    f_r.params = NULL;
-    f_r.function = integrand;
+    f_r.params = &args;
+    f_r.function = interp_integrand;
 
     rc = spherical_fourier_transform(out, out_err,
                                      ks, Nk,
                                      &f_r,
                                      limit, epsabs / (4 * M_PI));
+
+    // Handle integrand error
+    if (args.retcode != GSL_SUCCESS)
+        rc = args.retcode;
 
     if (rc == GSL_SUCCESS) {
         // Apply normalization for reverse Fourier transform
@@ -288,7 +285,92 @@ forward_spherical_fourier_transform(double *out, double *out_err,
         }
     }
 
-    gsl_interp_free(f_interp);
+    interp_integrand_args_free(&args);
+    return rc;
+}
+
+
+/// Performs a (2D) inverse fourier-transform on the function F(k)
+/// specified in the table of ks and Fs
+int
+inverse_circular_fourier_transform(double *out, double *out_err,
+                                    const double *rs, unsigned Nr,
+                                    const double *ks, const double *Fs, unsigned Nk,
+                                    unsigned limit, double epsabs, double epsrel)
+{
+    struct interp_integrand_args args;
+    int rc = interp_integrand_args_alloc(&args, ks, Fs, Nk);
+    if (rc != GSL_SUCCESS)
+        return rc;
+
+    gsl_function f_k;
+    f_k.params = &args;
+    f_k.function = interp_integrand;
+
+    rc = circular_fourier_transform(out, out_err,
+                                    rs, Nr,
+                                    &f_k,
+                                    limit, epsabs * 2 * M_PI, epsrel);
+
+    // Handle errors in integrand (as opposed to integrator)
+    if (args.retcode != GSL_SUCCESS)
+        rc = args.retcode;
+
+    if (rc == GSL_SUCCESS) {
+        // Apply normalization for reverse Fourier transform
+        // (See comment above spherical_fourier_transform)
+        for (unsigned i = 0; i < Nr; i++) {
+            out[i] /= 2 * M_PI;
+            if (out_err)
+                out_err[i] /= 2 * M_PI;
+        }
+    }
+
+    interp_integrand_args_free(&args);
+    return rc;
+}
+
+
+/// Performs a forward (2D) fourier-transform on the function f(r)
+/// specified in the table of rs and fs
+int
+forward_circular_fourier_transform(double *out, double *out_err,
+                                   const double *ks, unsigned Nk,
+                                   const double *rs, const double *fs, unsigned Nr,
+                                   unsigned limit, double epsabs, double epsrel)
+{
+
+    struct interp_integrand_args args;
+    int rc = interp_integrand_args_alloc(&args, rs, fs, Nr);
+    if (rc != GSL_SUCCESS)
+        return rc;
+
+    gsl_function f_r;
+    f_r.params = &args;
+    f_r.function = interp_integrand;
+
+    rc = circular_fourier_transform(out, out_err,
+                                    ks, Nk,
+                                    &f_r,
+                                    limit,
+                                    epsabs / (2 * M_PI),
+                                    epsrel);
+
+    // Handle errors in integrand (as opposed to integrator)
+    if (args.retcode != GSL_SUCCESS)
+        rc = args.retcode;
+
+    if (rc == GSL_SUCCESS) {
+        // Apply normalization for reverse Fourier transform
+        // (See comment above spherical_fourier_transform)
+        for (unsigned i = 0; i < Nr; i++) {
+            out[i] *= 2 * M_PI;
+            if (out_err)
+                out_err[i] *= 2 * M_PI;
+        }
+    }
+
+    interp_integrand_args_free(&args);
     return rc;
 }
 
@@ -435,6 +517,107 @@ spherical_fourier_transform(double *out, double *out_err,
     return retcode;
 }
 
+
+/// Computes the Fourier transform of a circularly symmetric distribution by:
+///
+/// F(k) = \int_0^\infty dr 2pi r J_0(kr) f(r)
+///
+/// Where J_0 is the Bessel function of the first kind.
+/// With no normalization factor (so, to compute F(k), multiply by 2pi). The
+/// inverse of this is:
+///
+/// f(r) = \int_0^\infty dk/(2pi) k J_0(kr) F(k)
+///
+/// So, to compute f(r) from F(k), use this function then divide by 2 pi^2.
+static int
+circular_fourier_transform(double *out, double *out_err,
+                            const double *ks, unsigned Nk,
+                            gsl_function *f_r,
+                            unsigned limit, double epsabs, double epsrel)
+{
+    if ((out == NULL) || (ks == NULL))
+        return GSL_FAILURE;
+
+    gsl_set_error_handler_off();
+    // Allocate our needed workspaces
+    gsl_integration_workspace *wkspc = gsl_integration_workspace_alloc(limit);
+
+    if (!wkspc)
+        return GSL_ENOMEM;
+
+    struct circular_ft_integrand_params {
+        double k;
+        gsl_function *f_r;
+        int retcode;
+    };
+
+    // Our integrand is (f(r) * r * J_0(kr))
+    double
+    integrand(double r, void *params)
+    {
+        struct circular_ft_integrand_params *p = params;
+
+        const double k = p->k;
+        gsl_function *f_r = p->f_r;
+        const double f = GSL_FN_EVAL(f_r, r);
+
+        gsl_sf_result res;
+        int retcode = gsl_sf_bessel_J0_e(k * r, &res);
+        if (retcode != GSL_SUCCESS) {
+            p->retcode = retcode;
+            return 0.0;
+        }
+
+        return f * r * res.val;
+    }
+
+    gsl_function fn;
+    fn.params = NULL;
+    fn.function = integrand;
+
+    int retcode = GSL_SUCCESS;
+    for (unsigned i = 0; i < Nk; i++) {
+        double this_k = ks[i];
+        fn.params = &this_k;
+        double result = 0.0, err = 0.0;
+
+        // Set params for this iteration
+        struct circular_ft_integrand_params params = {
+            .k = ks[i],
+            .f_r = f_r,
+            .retcode = GSL_SUCCESS
+        };
+        fn.params = (void *) &params;
+
+        // The qawf function performs a Fourier transform
+        retcode = gsl_integration_qagiu(&fn,
+                                        // Integrate from 0 to +\inf
+                                        0.0,
+                                        // Algorithm precision parameters
+                                        epsabs, epsrel, limit,
+                                        // Workspace & table for sinusoid integration
+                                        wkspc,
+                                        // Results
+                                        &result, &err);
+
+        // Propogate any errors inside integrand
+        if (params.retcode != GSL_SUCCESS)
+            retcode = params.retcode;
+
+        // Handle any errors
+        if (retcode != GSL_SUCCESS)
+            break;
+
+        out[i] = result;
+        if (out_err)
+            out_err[i] = err;
+    }
+
+    // Clean up
+    gsl_integration_workspace_free(wkspc);
+    return retcode;
+}
+
 // Performs the Abel transform (LOS projection):
 //
 // F(r) = \int_{-\inf}^{\inf} dk f(\sqrt{r^2 + k^2})
@@ -490,4 +673,65 @@ abel_transform(double *out, double *out_err,
     // Clean up
     gsl_integration_workspace_free(wkspc);
     return retcode;
+}
+
+static double
+interp_integrand(double x, void *params)
+{
+    struct interp_integrand_args *args = params;
+    if (args->retcode != GSL_SUCCESS)
+        return 0.0;
+
+    double F = 0.0;
+    int retcode = gsl_interp_eval_e(args->F, args->xs, args->ys,
+                                    x, NULL, &F);
+
+    // If we are *below* our x range, we use the leftmost y value,
+    // but if we are *above* our x range, we use 0.0.
+    // This is because this is used in a lot of infinite integrals (0 -> inf)
+    // which would diverge if nonzero at infinity, but have important behavior
+    // close to zero.
+    if (retcode == GSL_EDOM) {
+        if (x < args->xs[0])
+            return args->ys[0];
+        return 0.0;
+    } else if (retcode != GSL_SUCCESS) {
+        args->retcode = retcode;
+        return 0.0;
+    }
+    return F;
+}
+
+static int
+interp_integrand_args_alloc(struct interp_integrand_args *args,
+                            const double *xs, const double *ys,
+                            unsigned N)
+{
+    if (!args || !xs || !ys)
+        return -1;
+
+    args->F = gsl_interp_alloc(gsl_interp_linear, N);
+    if (!args->F)
+        return GSL_ENOMEM;
+
+    int rc = gsl_interp_init(args->F, xs, ys, N);
+    if (rc != GSL_SUCCESS)
+        return rc;
+
+    args->xs = xs;
+    args->ys = ys;
+    args->retcode = GSL_SUCCESS;
+
+    return GSL_SUCCESS;
+}
+
+static int
+interp_integrand_args_free(struct interp_integrand_args *args)
+{
+    if (!args)
+        return -1;
+    if (!args->F)
+        return -1;
+    gsl_interp_free(args->F);
+    return GSL_SUCCESS;
 }

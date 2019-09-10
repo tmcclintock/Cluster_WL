@@ -240,6 +240,147 @@ def forward_spherical_fourier_transform(ks, rs, fs, limit=1000, epsabs=1e-21,
     return f_out
 
 
+def inverse_circular_fourier_transform(rs, ks, Fs, limit=1000,
+                                       epsabs=1e-21, epsrel=1e-3,
+                                       return_errs=False):
+    '''
+    Inverse circular fourier transform of a spectrum F(k), evaluated at a grid
+    of radius values r. The spectrum F(k) is given at discrete points and
+    interpolated.
+
+    :math:`f(r) = \\frac{1}{2 \\pi} \\int_0^\\infty dk J_0(kr) k F(k)`
+
+    Note:
+        The above integral over :math:`k` is done using a GSL integration
+        routine. This means, however, that if the integrand is not
+        well-behaved (i.e. Fs = 0 except at a single `k` value, or if `F` is
+        singular) the integration routine may not locate the singularity, or it
+        may not converge.
+
+    Args:
+        rs (array): The radii at which to compute the inverse Fourier transform.
+        ks (array): Grid of angular frequencies `k` that the spectrum `F(k)` is
+                    evaluated at.
+        Fs (array): The spectrum `F(k)`, used for interpolation. Must be of
+                    the same size as `ks`.
+        limit (int): Number of subdivisions to use for integration
+                     algorithm.
+        epsabs (float): Absolute allowable error for integration.
+        epsrel (float): Relative allowable error for integration.
+
+    Returns:
+        (array): The inverse-Fourier transformed profile `f(r)`. The same \
+                 shape as `rs`.
+    '''
+    rs = np.asarray(rs, dtype=np.double)
+    ks = np.asarray(ks, dtype=np.double)
+    Fs = np.asarray(Fs, dtype=np.double)
+
+    if ks.shape != Fs.shape:
+        raise ValueError('ks and Fs must be the same shape')
+
+    scalar_input = False
+    if rs.ndim == 0:
+        scalar_input = True
+        # Convert r to 2d
+        rs = rs[None]
+    if rs.ndim > 1:
+        raise Exception('rs cannot be a >1D array.')
+
+    f_out = np.zeros_like(rs, dtype=np.double)
+    f_err_out = np.zeros_like(rs, dtype=np.double)
+
+    rc = _lib.inverse_circular_fourier_transform(_dcast(f_out),
+                                                 _dcast(f_err_out),
+                                                 _dcast(rs), len(rs),
+                                                 _dcast(ks), _dcast(Fs),
+                                                 len(Fs),
+                                                 limit, epsabs, epsrel)
+
+    if rc != 0:
+        msg = 'inverse_circular_fourier_transform returned error code: {}'
+        raise RuntimeError(msg.format(rc))
+
+    if scalar_input:
+        if return_errs:
+            return np.squeeze(f_out), np.squeeze(f_err_out)
+        return np.squeeze(f_out)
+    if return_errs:
+        return f_out, f_err_out
+    return f_out
+
+
+def forward_circular_fourier_transform(ks, rs, fs, limit=1000,
+                                       epsabs=1e-21, epsrel=1e-3,
+                                       return_errs=False):
+    '''
+    Forward circular fourier transform of a spectrum f(r), evaluated at a grid
+    of radius values k. The profile f(r) is given at discrete points and
+    interpolated.
+
+    :math:`f(k) = 2\\pi \\int_0^\\infty dr J_0(kr) r f(r)`
+
+    Note:
+        The above integral over :math:`k` is done using a GSL integration
+        routine. This means, however, that if the integrand is not
+        well-behaved (i.e. Fs = 0 except at a single `k` value, or if `F` is
+        singular) the integration routine may not locate the singularity, or it
+        may not converge.
+
+    Args:
+        ks (array): The wavenumbers at which to compute the forward Fourier
+                    transform.
+        rs (array): Grid of radii `r` that the spectrum `f(r)` is
+                    evaluated at.
+        fs (array): The spectrum `f(r)`, used for interpolation. Must be of
+                    the same size as `rs`.
+        limit (int): Number of subdivisions to use for integration
+                     algorithm.
+        epsabs (float): Absolute allowable error for integration.
+        epsrel (float): Relative allowable error for integration.
+
+    Returns:
+        (array): The forward-Fourier transformed profile `F(k)`. The same \
+                 shape as `ks`.
+    '''
+    rs = np.asarray(rs, dtype=np.double)
+    ks = np.asarray(ks, dtype=np.double)
+    fs = np.asarray(fs, dtype=np.double)
+
+    if rs.shape != fs.shape:
+        raise ValueError('rs and Fs must be the same shape')
+
+    scalar_input = False
+    if rs.ndim == 0:
+        scalar_input = True
+        # Convert r to 2d
+        rs = rs[None]
+    if rs.ndim > 1:
+        raise Exception('rs cannot be a >1D array.')
+
+    f_out = np.zeros_like(ks, dtype=np.double)
+    f_err_out = np.zeros_like(ks, dtype=np.double)
+
+    rc = _lib.forward_circular_fourier_transform(_dcast(f_out),
+                                                 _dcast(f_err_out),
+                                                 _dcast(ks), len(ks),
+                                                 _dcast(rs), _dcast(fs),
+                                                 len(fs),
+                                                 limit, epsabs, epsrel)
+
+    if rc != 0:
+        msg = 'forward_circular_fourier_transform returned error code: {}'
+        raise RuntimeError(msg.format(rc))
+
+    if scalar_input:
+        if return_errs:
+            return np.squeeze(f_out), np.squeeze(f_err_out)
+        return np.squeeze(f_out)
+    if return_errs:
+        return f_out, f_err_out
+    return f_out
+
+
 def abel_transform(xs, ys, rs, limit=1000, epsabs=1e-29, epsrel=1e-3):
     '''
     Perform the Abel transform (line-of-sight projection) for a spherically
