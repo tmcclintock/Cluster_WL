@@ -37,6 +37,7 @@ from cluster_toolkit import _dcast, _lib
 import numpy as np
 from scipy.integrate import quad
 from scipy.interpolate import interp1d, interp2d
+import scipy.special as sp
 
 # Battaglia best fit parameters
 _BBPS_params_P_0 = (18.1, 0.154, -0.758)
@@ -394,7 +395,7 @@ def abel_transform(xs, ys, rs, limit=1000, epsabs=1e-29, epsrel=1e-3):
     rs = np.ascontiguousarray(rs, dtype=np.double)
 
     if xs.shape != ys.shape:
-        raise ValueError('integrate_spline: xs and ys must be same shape')
+        raise ValueError('abel_transform: xs and ys must be same shape')
 
     f_out = np.zeros_like(rs)
     f_out_err = np.zeros_like(rs)
@@ -405,7 +406,7 @@ def abel_transform(xs, ys, rs, limit=1000, epsabs=1e-29, epsrel=1e-3):
                                     limit, epsabs, epsrel)
 
     if rc != 0:
-        msg = 'integrate_spline returned error code: {}'
+        msg = 'abel_transform returned error code: {}'
         raise RuntimeError(msg.format(rc))
     return f_out
 
@@ -1246,6 +1247,42 @@ class TwoHaloProfile:
                                                      lnMs_halo_mass[-1])
 
         return weighted_profiles
+
+    def convolved_y_FT(self, thetas, ks, z, da,
+                       miscent_offset=None,
+                       sigma_beam=5 / np.sqrt(2 * np.log(2)),
+                       nr=1000, nM=1000,
+                       limit=1000,
+                       epsabs_mi=1e-21,
+                       epsabs_re=1e-8,
+                       epsrel=1e-3):
+        igrnds = self.two_halo_mass_integrand(ks, z, nr=nr, nM=nM,
+                                              limit=limit, epsabs=epsabs_mi)
+        Ps = self.P_lin(ks, z)
+
+        # Due to the projection-slice thm, the 3D FT is the same as the
+        # 2D FT of a projection of the 3D distribution.
+        # Basically, we can skip a step by using the 3D FT of the 2halo as the
+        # 2D FT of the projected 2halo
+        fourier_2h = _pressure_to_y * igrnds * Ps
+
+        # Transverse radii - convert theta (in arcmin) to physical radii
+        rs = da * (np.pi / 180) * (thetas / 60)
+
+        # If a miscentering distance has been specified, apply it
+        if miscent_offset is not None:
+            fourier_2h *= sp.j0(miscent_offset * ks)
+
+        # If a beam width has been specified, apply it
+        if sigma_beam is not None:
+            # Convert sigma from arcmin to physical units
+            sigma_phys = da * (np.pi / 180) * (sigma_beam / 60)
+            fourier_2h *= np.exp(-ks*ks*sigma_phys*sigma_phys/2)
+
+        return inverse_circular_fourier_transform(rs, ks, fourier_2h,
+                                                  limit=limit,
+                                                  epsabs=epsabs_re,
+                                                  epsrel=epsrel) / (1 + z)
 
     def convolved_y(self, da, z, rs_proj, rs_2h, ks,
                     Xh=0.76,

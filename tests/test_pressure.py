@@ -359,3 +359,49 @@ def test_2halo():
     plt.plot(rs, two_halo)
     plt.loglog()
     plt.show()
+
+
+@pytest.mark.skip(reason='plots')
+def test_convolved_2h():
+    cosmo = get_cosmology(0)
+    rs_2h = np.geomspace(0.01, 20, 100)
+    rs_proj = np.geomspace(0.01, 20, 60)
+    ks = np.geomspace(0.1, 20, 100)
+    fig, axs = plt.subplots(nrows=2, ncols=1, sharex=True,
+                            gridspec_kw={'height_ratios': [2, 1]})
+    axs[0].loglog()
+    for z in [0.1, 0.2, 0.4]:
+        # Create mass def interpolation table
+        m200c_lo = convert_mass(cosmo['hmf_m'].min(), z,
+                                mdef_in='200m', mdef_out='200c')
+        m200c_hi = convert_mass(cosmo['hmf_m'].max(), z,
+                                mdef_in='200m', mdef_out='200c')
+        m200c = np.geomspace(m200c_lo * 0.95, m200c_hi * 1.05, cosmo['hmf_m'].size)
+        m200m = convert_mass(m200c, z, mdef_in='200c', mdef_out='200m')
+        # Do two-halo computation
+        th = pp.TwoHaloProfile(cosmo['omega_b'], cosmo['omega_m'], cosmo['h0'],
+                               cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b'],
+                               cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_dndm'],
+                               cosmo['P_lin_k'], cosmo['P_lin_z'], cosmo['P_lin_p'],
+                               m200m, m200c)
+
+        da = cosmo['d_a_i'](z)
+        # Compare the mock-image-fft method to the analytic Fourier-space
+        # convolution
+        thetas, two_halo_fft_convolved = th.convolved_y(da, z, rs_proj, rs_2h, ks,
+                                                        theta=30)
+        two_halo_psl_convolved = th.convolved_y_FT(thetas, ks, z, da,
+                                                   epsabs_mi=1e-25,
+                                                   epsabs_re=1e-9)
+        axs[0].plot(thetas, two_halo_fft_convolved, label='FFT method, z={}'.format(z))
+        axs[0].plot(thetas, two_halo_psl_convolved, label='Proj.-slice metho, z={}'.format(z))
+        axs[0].loglog()
+        axs[1].plot(thetas, (two_halo_fft_convolved - two_halo_psl_convolved) / two_halo_psl_convolved,
+                    label='Fractional residual z={}'.format(z))
+    axs[0].legend()
+    axs[0].set_ylabel('Compton-$y$')
+    axs[1].legend()
+    axs[1].set_ylim((-0.1, 0.1))
+    axs[1].set_ylabel('Fractional residual')
+    axs[1].set_xlabel('Radius from cluster ($Mpc$)')
+    plt.show()

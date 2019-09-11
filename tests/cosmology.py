@@ -1,6 +1,6 @@
 import numpy as np
 import os
-from scipy.interpolate import interp2d
+from scipy.interpolate import interp1d, interp2d
 
 try:
     from colossus.halo import concentration, mass_defs
@@ -60,6 +60,7 @@ def get_cosmology(n):
     cosmo['z_chi'] = load_path('distances/z.txt')
     cosmo['chi'] = load_path('distances/d_m.txt')
     cosmo['d_a'] = load_path('distances/d_a.txt')
+    cosmo['d_a_i'] = interp1d(cosmo['z_chi'], cosmo['d_a'])
 
     # Get halo mass function
     # NB: mass definition is _MEAN MASS OVERDENSITY_, not _CRITICAL MASS
