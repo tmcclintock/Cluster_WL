@@ -41,7 +41,7 @@ static int
 spherical_fourier_transform(double *out, double *out_err,
                             const double *ks, unsigned Nk,
                             gsl_function *f_r,
-                            unsigned limit, double epsabs);
+                            unsigned limit, double epsabs, double epsrel);
 
 // Computes the (unnormalized) Fourier transform of a circularly symmetric
 // function f_r at a set of wavenumbers ks.
@@ -170,7 +170,7 @@ fourier_P_BBPS(double *up_out, double *up_err_out,
                double z, double omega_b, double omega_m, double h,
                double P_0, double x_c, double beta,
                double alpha, double gamma, double delta,
-               unsigned limit, double epsabs)
+               unsigned limit, double epsabs, double epsrel)
 {
     double
     integrand(double r, void *params)
@@ -191,7 +191,7 @@ fourier_P_BBPS(double *up_out, double *up_err_out,
 
     int rc = spherical_fourier_transform(up_out, up_err_out, ks, Nk,
                                          &f_r,
-                                         limit, epsabs / (4 * M_PI));
+                                         limit, epsabs / (4 * M_PI), epsrel);
 
     if (rc != GSL_SUCCESS)
         return rc;
@@ -214,7 +214,7 @@ int
 inverse_spherical_fourier_transform(double *out, double *out_err,
                                     const double *rs, unsigned Nr,
                                     const double *ks, const double *Fs, unsigned Nk,
-                                    unsigned limit, double epsabs)
+                                    unsigned limit, double epsabs, double epsrel)
 {
     struct interp_integrand_args args;
     int rc = interp_integrand_args_alloc(&args, ks, Fs, Nk);
@@ -228,7 +228,7 @@ inverse_spherical_fourier_transform(double *out, double *out_err,
     rc = spherical_fourier_transform(out, out_err,
                                      rs, Nr,
                                      &f_k,
-                                     limit, epsabs * 2 * M_PI * M_PI);
+                                     limit, epsabs * 2 * M_PI * M_PI, epsrel);
 
     // Handle errors in integrand (as opposed to integrator)
     if (args.retcode != GSL_SUCCESS)
@@ -255,7 +255,7 @@ int
 forward_spherical_fourier_transform(double *out, double *out_err,
                                     const double *ks, unsigned Nk,
                                     const double *rs, const double *fs, unsigned Nr,
-                                    unsigned limit, double epsabs)
+                                    unsigned limit, double epsabs, double epsrel)
 {
     struct interp_integrand_args args;
     int rc = interp_integrand_args_alloc(&args, rs, fs, Nr);
@@ -269,7 +269,7 @@ forward_spherical_fourier_transform(double *out, double *out_err,
     rc = spherical_fourier_transform(out, out_err,
                                      ks, Nk,
                                      &f_r,
-                                     limit, epsabs / (4 * M_PI));
+                                     limit, epsabs / (4 * M_PI), epsrel);
 
     // Handle integrand error
     if (args.retcode != GSL_SUCCESS)
@@ -446,7 +446,7 @@ static int
 spherical_fourier_transform(double *out, double *out_err,
                             const double *ks, unsigned Nk,
                             gsl_function *f_r,
-                            unsigned limit, double epsabs)
+                            unsigned limit, double epsabs, double epsrel)
 {
     if ((out == NULL) || (ks == NULL))
         return GSL_FAILURE;
@@ -477,11 +477,19 @@ spherical_fourier_transform(double *out, double *out_err,
     fn.params = NULL;
     fn.function = integrand;
 
+    // -- On Error Bounds -- //
+    // QAWF only does absolute error bounds, not relative error. However,
+    // relative errors are useful for us! So we will ~approximate~
+    // `epsrel` behavior by assuming that f(k) changes slowly, and taking
+    // this_epsabs = max(f(last_k) * epsrel, epsabs) as epsabs at every cycle.
+    double last_result = epsabs / epsrel;
     int retcode = GSL_SUCCESS;
     for (unsigned i = 0; i < Nk; i++) {
         double this_k = ks[i];
         fn.params = &this_k;
         double result = 0.0, err = 0.0;
+        // See On Error Bounds, above
+        double this_epsabs = (last_result*epsrel < epsabs) ? epsabs : last_result*epsrel;
 
         // Update table for new iteration speed `k`. Again, L is ignored, so we
         // make it 1 full cycle for simplicity.
@@ -494,7 +502,7 @@ spherical_fourier_transform(double *out, double *out_err,
                                        // Integrate from 0
                                        0.0,
                                        // Algorithm precision parameters
-                                       epsabs, limit,
+                                       this_epsabs, limit,
                                        // Workspace & table for sinusoid integration
                                        wkspc, cycle, tbl,
                                        // Results
@@ -504,7 +512,7 @@ spherical_fourier_transform(double *out, double *out_err,
         if (retcode != GSL_SUCCESS)
             break;
 
-        out[i] = result;
+        out[i] = last_result = result;
         if (out_err)
             out_err[i] = err;
     }

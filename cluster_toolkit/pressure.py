@@ -104,7 +104,8 @@ def P_delta(M, z, omega_b, omega_m, h, delta=200):
         (omega_b / omega_m) / (2 * R_delta(M, z, omega_m, h, delta))
 
 
-def inverse_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
+def inverse_spherical_fourier_transform(rs, ks, Fs,
+                                        limit=1000, epsabs=1e-21, epsrel=1e-3,
                                         return_errs=False):
     '''
     Inverse spherical fourier transform of a spectrum F(k), evaluated at a grid
@@ -157,7 +158,7 @@ def inverse_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
                                                   _dcast(rs), len(rs),
                                                   _dcast(ks), _dcast(Fs),
                                                   len(Fs),
-                                                  limit, epsabs)
+                                                  limit, epsabs, epsrel)
 
     if rc != 0:
         msg = 'inverse_spherical_fourier_transform returned error code: {}'
@@ -172,7 +173,8 @@ def inverse_spherical_fourier_transform(rs, ks, Fs, limit=1000, epsabs=1e-21,
     return f_out
 
 
-def forward_spherical_fourier_transform(ks, rs, fs, limit=1000, epsabs=1e-21,
+def forward_spherical_fourier_transform(ks, rs, fs, limit=1000,
+                                        epsabs=1e-21, epsrel=1e-3,
                                         return_errs=False):
     '''
     Forward spherical fourier transform of a spectrum f(r), evaluated at a grid
@@ -226,7 +228,7 @@ def forward_spherical_fourier_transform(ks, rs, fs, limit=1000, epsabs=1e-21,
                                                   _dcast(ks), len(ks),
                                                   _dcast(rs), _dcast(fs),
                                                   len(fs),
-                                                  limit, epsabs)
+                                                  limit, epsabs, epsrel)
 
     if rc != 0:
         msg = 'forward_spherical_fourier_transform returned error code: {}'
@@ -914,7 +916,7 @@ class BBPSProfile:
 
     def _C_fourier_pressure(self, k,
                             limit=1000,
-                            epsabs=1e-23,
+                            epsabs=1e-23, epsrel=1e-3,
                             return_errs=False):
         '''
         Computes the 3D fourier transform of the BBPS pressure profile.
@@ -964,7 +966,7 @@ class BBPSProfile:
                                  self.alpha, self.gamma,
                                  self.delta,
                                  limit,
-                                 epsabs)
+                                 epsabs, epsrel)
 
         if rc != 0:
             msg = 'C_projected_P_BBPS returned error code: {}'.format(rc)
@@ -1142,7 +1144,7 @@ class TwoHaloProfile:
 
     def two_halo(self, rs, ks, z,
                  nM=1000, limit=1000,
-                 epsabs=1e-21):
+                 epsabs=1e-25, epsrel=1e-3):
         '''
         Computes the 3D 2-halo halo-pressure correlation
         :math:`\\xi_{h, P}(r | M, z)`:
@@ -1166,19 +1168,22 @@ class TwoHaloProfile:
                      shape as `rs`.
         '''
         igrnds = self.two_halo_mass_integrand(ks, z,
-                                              nM=nM)
+                                              nM=nM,
+                                              epsabs=epsabs,
+                                              epsrel=epsrel)
 
         Ps = self.P_lin(ks, z)
         radial_term = inverse_spherical_fourier_transform(rs, ks, Ps * igrnds,
                                                           limit=limit,
-                                                          epsabs=epsabs)
+                                                          epsabs=epsabs,
+                                                          epsrel=epsrel)
 
         # TODO - mass bias
         return radial_term
 
     def two_halo_mass_integrand(self, ks, z,
                                 nr=1000, nM=1000,
-                                limit=1000, epsabs=1e-21):
+                                limit=1000, epsabs=1e-25, epsrel=1e-3):
         '''
         A mass-weighted pressure profile, in Fourier space.
 
@@ -1195,7 +1200,8 @@ class TwoHaloProfile:
                                                    nM=nM)
 
         return forward_spherical_fourier_transform(ks, rs, mass_weighted,
-                                                   limit=limit, epsabs=epsabs)
+                                                   limit=limit, epsabs=epsabs,
+                                                   epsrel=epsrel)
 
     def mass_weighted_profile(self, rs, z, nM=1000):
         '''
@@ -1249,22 +1255,26 @@ class TwoHaloProfile:
         return weighted_profiles
 
     def convolved_y_FT(self, thetas, ks, z, da,
+                       Xh=0.76,
                        miscent_offset=None,
                        sigma_beam=5 / np.sqrt(2 * np.log(2)),
                        nr=1000, nM=1000,
                        limit=1000,
-                       epsabs_mi=1e-21,
-                       epsabs_re=1e-8,
+                       epsabs_2h=1e-25,
+                       epsabs_re=1e-9,
                        epsrel=1e-3):
         igrnds = self.two_halo_mass_integrand(ks, z, nr=nr, nM=nM,
-                                              limit=limit, epsabs=epsabs_mi)
+                                              limit=limit,
+                                              epsabs=epsabs_2h,
+                                              epsrel=epsrel)
         Ps = self.P_lin(ks, z)
 
         # Due to the projection-slice thm, the 3D FT is the same as the
         # 2D FT of a projection of the 3D distribution.
         # Basically, we can skip a step by using the 3D FT of the 2halo as the
         # 2D FT of the projected 2halo
-        fourier_2h = _pressure_to_y * igrnds * Ps
+        y_conversion = _pressure_to_y * (2*Xh + 2) / (5*Xh + 3)
+        fourier_2h = y_conversion * igrnds * Ps
 
         # Transverse radii - convert theta (in arcmin) to physical radii
         rs = da * (np.pi / 180) * (thetas / 60)
@@ -1289,7 +1299,7 @@ class TwoHaloProfile:
                     theta=15, n=200,
                     psf_sigma=5 / np.sqrt(2 * np.log(2)),
                     nM=1000, limit=1000,
-                    epsabs_2h=1e-21,
+                    epsabs_2h=1e-25,
                     epsabs_abel=1e-23,
                     epsrel_abel=1e-3):
         '''
@@ -1325,7 +1335,8 @@ class TwoHaloProfile:
                                     epsabs_2h=epsabs_2h,
                                     epsabs_abel=epsabs_abel,
                                     epsrel_abel=epsrel_abel)
-        interp = interp1d(rs_proj, projection * _pressure_to_y)
+        y_conversion = _pressure_to_y * (2*Xh + 2) / (5*Xh + 3)
+        interp = interp1d(rs_proj, projection * y_conversion)
 
         def image_func(thetas):
             # Convert arcmin to physical transverse distance

@@ -390,9 +390,7 @@ def test_convolved_2h():
         # convolution
         thetas, two_halo_fft_convolved = th.convolved_y(da, z, rs_proj, rs_2h, ks,
                                                         theta=30)
-        two_halo_psl_convolved = th.convolved_y_FT(thetas, ks, z, da,
-                                                   epsabs_mi=1e-25,
-                                                   epsabs_re=1e-9)
+        two_halo_psl_convolved = th.convolved_y_FT(thetas, ks, z, da)
         axs[0].plot(thetas, two_halo_fft_convolved, label='FFT method, z={}'.format(z))
         axs[0].plot(thetas, two_halo_psl_convolved, label='Proj.-slice metho, z={}'.format(z))
         axs[0].loglog()
