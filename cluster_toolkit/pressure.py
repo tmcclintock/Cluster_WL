@@ -500,32 +500,37 @@ class BBPSProfile:
            1.78752532e-24, 1.05882458e-24])
 
     Args:
-        M (float): Cluster :math:`M_{\\Delta c}`, in Msun.
-                   **NB** this is the **CRITICAL MASS OVERDENSITY** mass
-                   definition.
+        M (float):
+            Cluster :math:`M_{\\Delta c}`, in Msun.  **NB** this is the
+            **CRITICAL MASS OVERDENSITY** mass definition.
         z (float): Cluster redshift.
-        h (float): The reduced Hubble constant, `H_0 / (100 km / s / Mpc)`
-        omega_b (float): Baryon fraction.
-        omega_m (float): Matter fraction.
-        params_P_0 (tuple): 3-tuple of :math:`P_0` mass, redshift dependence \
-                parameters A, :math:`\\alpha_m`, :math:`\\alpha_z`, \
-                respectively. See BBPS Equation 11. Default is BBPS's \
-                best-fit.
-        params_x_c (tuple): 3-tuple of :math:`x_c` mass, redshift dependence, \
-                same as `params_P_0`. Default is BBPS's \
-                best-fit.
-        params_beta (tuple): 3-tuple of :math:`\\beta` mass, redshift \
-                dependence, same as `params_P_0`. Default is BBPS's \
-                best-fit.
+        cosmo (dictionary):
+            A dictionary of cosmological parameters. Expected to
+            contain the following:
+
+            * **omega_b:** (float) Baryon fraction.
+            * **omega_m:** (float) Mass fraction.
+            * **h0:** (float) Reduced hubble constant.
+        params_P_0 (tuple):
+            3-tuple of :math:`P_0` mass, redshift dependence parameters A,
+            :math:`\\alpha_m`, :math:`\\alpha_z`, respectively. See BBPS
+            Equation 11. Default is BBPS's best-fit.
+        params_x_c (tuple):
+            3-tuple of :math:`x_c` mass, redshift dependence, same as
+            `params_P_0`. Default is BBPS's best-fit.
+        params_beta (tuple):
+            3-tuple of :math:`\\beta` mass, redshift dependence, same as
+            `params_P_0`. Default is BBPS's best-fit.
         alpha (float): Profile parameter. See BBPS Eq. 10.
         gamma (float): Profile parameter. See BBPS Eq. 10.
         delta (float): Halo overdensity :math:`\\Delta`.
     '''
     def __init__(self, M, z,
-                 omega_b, omega_m, h,
+                 cosmo,
                  params_P_0=_BBPS_params_P_0,
                  params_x_c=_BBPS_params_x_c,
                  params_beta=_BBPS_params_beta,
+                 M_pivot=1e14,
                  alpha=1, gamma=-0.3,
                  delta=200):
         # Halo definition
@@ -534,14 +539,15 @@ class BBPSProfile:
         self.__delta = delta
 
         # Cosmological info
-        self.__omega_b = omega_b
-        self.__omega_m = omega_m
-        self.__h = h
+        self.__omega_b = cosmo['omega_b']
+        self.__omega_m = cosmo['omega_m']
+        self.__h = cosmo['h0']
 
         # Profile fit parameters
         self.__params_P_0 = params_P_0
         self.__params_x_c = params_x_c
         self.__params_beta = params_beta
+        self.__M_pivot = M_pivot
         self.alpha = alpha
         self.gamma = gamma
 
@@ -563,18 +569,22 @@ class BBPSProfile:
         self._update_halo()
         return self
 
-    def update_cosmology(self, omega_b, omega_m, h):
+    def update_cosmology(self, cosmo):
         '''
         Update cosmological parameters.
 
         Args:
-            omega_b (float): Baryon fraction.
-            omega_m (float): Mass fraction.
-            h (float): Reduced hubble constant.
+            cosmo (dictionary):
+                A dictionary of cosmological parameters. Expected to
+                contain the following:
+
+                * **omega_b:** (float) Baryon fraction.
+                * **omega_m:** (float) Mass fraction.
+                * **h0:** (float) Reduced hubble constant.
         '''
-        self.__omega_b = omega_b
-        self.__omega_m = omega_m
-        self.__h = h
+        self.__omega_b = cosmo['omega_b']
+        self.__omega_m = cosmo['omega_m']
+        self.__h = cosmo['h0']
         self._update_halo()
         return self
 
@@ -583,9 +593,12 @@ class BBPSProfile:
                                  delta=self.delta)
         self.__P_delta = P_delta(self.M, self.z, self.omega_b, self.omega_m,
                                  self.__h, delta=self.delta)
-        self.__P_0 = self._A(self.M, self.z, *self.__params_P_0)
-        self.__x_c = self._A(self.M, self.z, *self.__params_x_c)
-        self.__beta = self._A(self.M, self.z, *self.__params_beta)
+        self.__P_0 = self._A(self.M, self.z, *self.__params_P_0,
+                             **{'M_pivot': self.__M_pivot})
+        self.__x_c = self._A(self.M, self.z, *self.__params_x_c,
+                             **{'M_pivot': self.__M_pivot})
+        self.__beta = self._A(self.M, self.z, *self.__params_beta,
+                              **{'M_pivot': self.__M_pivot})
 
     @property
     def M(self):
@@ -633,6 +646,7 @@ class BBPSProfile:
     @omega_b.setter
     def set_omega_b(self, omega_b):
         self.__omega_b = omega_b
+        self._update_halo()
 
     @property
     def omega_m(self):
@@ -687,13 +701,13 @@ class BBPSProfile:
         return self.__P_delta
 
     @staticmethod
-    def _A(M, z, A_0, alpha_m, alpha_z):
+    def _A(M, z, A_0, alpha_m, alpha_z, M_pivot=1e14):
         '''
         Mass-Redshift dependency model for the generalized BBPS profile
         parameters, fit to simulated halos in that data. The best-fit
         parameters are presented in Table 1. of BBPS
         '''
-        return A_0 * (M / 10**14)**alpha_m * (1 + z)**alpha_z
+        return A_0 * (M / M_pivot)**alpha_m * (1 + z)**alpha_z
 
     def pressure(self, r):
         '''
@@ -809,7 +823,7 @@ class BBPSProfile:
                                             epsabs=epsabs, epsrel=epsrel)
 
     def convolved_y(self, da, theta=15, n=200,
-                    sigma=5 / np.sqrt(2 * np.log(2)),
+                    sigma_beam=5 / np.sqrt(2 * np.log(2)),
                     Xh=0.76, limit=1000,
                     epsabs=1e-14, epsrel=1e-3):
         '''
@@ -837,7 +851,7 @@ class BBPSProfile:
                                   Xh=Xh, limit=limit,
                                   epsabs=epsabs, epsrel=epsrel)
         return create_convolved_profile(image_func,
-                                        theta=theta, n=n, sigma=sigma)
+                                        theta=theta, n=n, sigma=sigma_beam)
 
     def fourier_pressure(self, rmax, nr):
         '''
@@ -996,56 +1010,63 @@ class TwoHaloProfile:
     args to adjust accordingly.
 
     Args:
-            omega_b (float): Baryon fraction.
-            omega_m (float): Matter fraction.
-            h (float): Reduced Hubble constant,
-                       :math:`H_0 / (100 km s^{-1} Mpc^{-1})`.
-            hmb_m (1d array): The mass points at which the halo mass bias is
-                              evaluated. Units: :math:`M_{sun}`.
-                              Mass definition: :math:`M_{200m}`.
-            hmb_z (1d array): The redshifts at which the halo mass bias is
-                              evaluated.
-            hmb_b (2d array): The evaluated halo mass bias, for each (m, z)
-                              combination.
-            hmf_m (1d array): The mass points at which the halo mass function
-                              is evaluated. Units: :math:`M_{sun}`.
-                              Mass definition: :math:`M_{200m}`.
-            hmf_z (1d array): The redshifts at which the halo mass function is
-                              evaluated.
-            hmf_f (2d array): The evaluated halo mass function, for each
-                              (m, z) combination.
-            P_lin_k (1d array): The wavenumbers at which the linear matter
-                                power spectrum is evaluated.
-            P_lin_z (1d array): The redshifts at which the linear matter power
-                                spectrum is evaluated.
-            P_lin (2d array): The evaluated linear matter power spectrum, for
-                              each (k, z) combination.
-            mdelta_m (1d array): A set of *mean overdensity* halo masses.
-            mdelta_c (1d array): A set of *critical overdensity* halo masses
-                                 corresponding to `mdelta_m`. Needed to convert
-                                 between the two halo definitions.
-            halo_mass_def (string): One of "mean", "critical". The mass
-                                    definiton used in `hmf_m` and `hmb_m`.
-            one_halo_def (string): One of "mean", "critical". The mass definiton
-                                   used by `one_halo`.
-            one_halo (class): The 1-halo pressure model to use, default is
-                              :class:`BBPSProfile`. TODO: Document expected
-                              arguments.
-            one_halo_args (iterable): Any extra arguments to give the `one_halo`
-                                      class, e.g. profile parameters.
-            one_halo_kwargs (dictionary): Any extra keyword arguments to give
-                                          the `one_halo` class, e.g. profile
-                                          parameters.
+        cosmo (dictionary):
+            A dictionary of cosmological parameters. Expected to
+            contain the following:
+
+            * **omega_b:** (float) Baryon fraction.
+            * **omega_m:** (float) Mass fraction.
+            * **h0:** (float) Reduced hubble constant,
+              :math:`H_0 / (100 km s^{-1} Mpc^{-1})`.
+            * **hmb_m:** (1d array) The mass points at which the halo mass bias
+              is evaluated. Units: :math:`M_{sun}`.  Mass definition:
+              :math:`M_{200m}`.
+            * **hmb_z:** (1d array) The redshifts at which the halo mass bias is
+              evaluated.
+            * **hmb_b:** (2d array) The evaluated halo mass bias, for each
+              (m, z) combination.
+            * **hmf_m:** (1d array) The mass points at which the halo mass
+              function is evaluated.  Units: :math:`M_{sun}`.  Mass definition:
+              :math:`M_{200m}`.
+            * **hmf_z:** (1d array) The redshifts at which the halo mass
+              function is evaluated.
+            * **hmf_f:** (2d array) The evaluated halo mass function, for each
+              (m, z) combination.
+            * **P_lin_k:** (1d array) The wavenumbers at which the linear matter
+              power spectrum is evaluated.
+            * **P_lin_z:** (1d array) The redshifts at which the linear matter
+              power spectrum is evaluated.
+            * **P_lin:** (2d array) The evaluated linear matter power spectrum,
+              for each (k, z) combination.
+        mdelta_m (1d array): A set of *mean overdensity* halo masses.
+        mdelta_c (1d array): A set of *critical overdensity* halo masses
+                             corresponding to `mdelta_m`. Needed to convert
+                             between the two halo definitions.
+        halo_mass_def (string): One of "mean", "critical". The mass
+                                definiton used in `hmf_m` and `hmb_m`.
+        one_halo_def (string): One of "mean", "critical". The mass definiton
+                               used by `one_halo`.
+        one_halo (class): The 1-halo pressure model to use, default is
+                          :class:`BBPSProfile`. TODO: Document expected
+                          arguments.
+        one_halo_args (iterable): Any extra arguments to give the `one_halo`
+                                  class, e.g. profile parameters.
+        one_halo_kwargs (dictionary): Any extra keyword arguments to give
+                                      the `one_halo` class, e.g. profile
+                                      parameters.
     '''
-    def __init__(self, omega_b, omega_m, h,
-                 hmb_m, hmb_z, hmb_b,
-                 hmf_m, hmf_z, hmf_f,
-                 P_lin_k, P_lin_z, P_lin,
+    def __init__(self, cosmo,
                  mdelta_m, mdelta_c,
                  halo_mass_def='mean',
                  one_halo_def='critical',
                  one_halo=BBPSProfile, one_halo_args=(), one_halo_kwargs={},
                  allow_weird_h=False):
+        omega_m, omega_b, h = cosmo['omega_m'], cosmo['omega_b'], cosmo['h0']
+        hmb_m, hmb_z, hmb_b = cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b']
+        hmf_m, hmf_z, hmf_f = cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_f']
+        P_lin_k, P_lin_z, P_lin = cosmo['P_lin_k'], cosmo['P_lin_z'], \
+            cosmo['P_lin']
+
         # To help user get the right units
         if not allow_weird_h:
             if h > 2 or h < 0.1:
@@ -1236,7 +1257,7 @@ class TwoHaloProfile:
         profiles = np.zeros((nM, rs.size), dtype=np.double)
         for Mi, M in enumerate(Ms_one_halo):
             pmodel = self._profile_model(M, z,
-                                         self.omega_b, self.omega_m, self.h,
+                                         cosmo,
                                          *self._one_halo_args,
                                          **self._one_halo_kwargs)
             profiles[Mi] = pmodel.pressure(rs)
