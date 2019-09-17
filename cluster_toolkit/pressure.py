@@ -1061,6 +1061,7 @@ class TwoHaloProfile:
                  one_halo_def='critical',
                  one_halo=BBPSProfile, one_halo_args=(), one_halo_kwargs={},
                  allow_weird_h=False):
+        self.cosmo = cosmo
         omega_m, omega_b, h = cosmo['omega_m'], cosmo['omega_b'], cosmo['h0']
         hmb_m, hmb_z, hmb_b = cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b']
         hmf_m, hmf_z, hmf_f = cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_f']
@@ -1257,7 +1258,6 @@ class TwoHaloProfile:
         profiles = np.zeros((nM, rs.size), dtype=np.double)
         for Mi, M in enumerate(Ms_one_halo):
             pmodel = self._profile_model(M, z,
-                                         cosmo,
                                          *self._one_halo_args,
                                          **self._one_halo_kwargs)
             profiles[Mi] = pmodel.pressure(rs)
