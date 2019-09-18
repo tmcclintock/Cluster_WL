@@ -10,7 +10,7 @@ headers = glob.glob(os.path.join('include','*.h'))
 try:
     cflags = subprocess.check_output(['gsl-config', '--cflags'], universal_newlines=True).split()
     # TODO make this robust to compiler
-    cflags.append('-std=c99')
+    cflags.append('-std=gnu99')
     lflags = subprocess.check_output(['gsl-config', '--libs'], universal_newlines=True).split()
 except OSError:
     raise Exception("Error: must have GSL installed and gsl-config working")
