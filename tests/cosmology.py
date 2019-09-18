@@ -72,7 +72,7 @@ def get_cosmology(n):
     # (Convert to dn/dm from dn/d(lnm))
     for i in range(cosmo['hmf_dndm'].shape[0]):
         cosmo['hmf_dndm'][i, :] /= cosmo['hmf_m']
-    cosmo['hmf'] = interp2d(cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_dndm'])
+    cosmo['hmf_i'] = interp2d(cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_dndm'])
 
     # Get the halo mass bias
     # As with HMF, NB: mass definition is _MEAN MASS OVERDENSITY_, not
@@ -80,13 +80,13 @@ def get_cosmology(n):
     cosmo['hmb_z'] = load_path('tinker_bias_function/z.txt')
     cosmo['hmb_m'] = np.exp(load_path('tinker_bias_function/ln_mass_h.txt'))/h0
     cosmo['hmb_b'] = load_path('tinker_bias_function/bias.txt')
-    cosmo['hmb'] = interp2d(cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b'])
+    cosmo['hmb_i'] = interp2d(cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b'])
 
     # Get the matter power spectrum
     cosmo['P_lin_k'] = load_path('matter_power_lin/k_h.txt') * h0
     cosmo['P_lin_z'] = load_path('matter_power_lin/z.txt')
-    cosmo['P_lin_p'] = load_path('matter_power_lin/p_k.txt') / (h0**3)
-    cosmo['P_lin'] = interp2d(cosmo['P_lin_k'], cosmo['P_lin_z'],
-                              cosmo['P_lin_p'])
+    cosmo['P_lin'] = load_path('matter_power_lin/p_k.txt') / (h0**3)
+    cosmo['P_lin_i'] = interp2d(cosmo['P_lin_k'], cosmo['P_lin_z'],
+                                cosmo['P_lin'])
 
     return cosmo

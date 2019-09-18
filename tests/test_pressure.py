@@ -74,6 +74,7 @@ def test_projection_approximation_6():
         do_test_projection_approximation(6)
 
 
+# TODO: change this to remove pandas dependency
 def test_pressure():
     cosmo = get_cosmology(0)
     profiles = pd.read_csv(os.path.join(os.path.dirname(__file__),
@@ -95,6 +96,7 @@ def test_pressure():
             assert abs((ourP - P) / P) < 5e-3
 
 
+# TODO: change this to remove pandas dependency
 @pytest.mark.skip(reason='fiducial table used different integration method')
 def test_y_projection():
     cosmo = get_cosmology(0)

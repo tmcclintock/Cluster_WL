@@ -1033,7 +1033,8 @@ class TwoHaloProfile:
             * **hmf_f:** (2d array) The evaluated halo mass function, for each
               (m, z) combination.
             * **P_lin_k:** (1d array) The wavenumbers at which the linear matter
-              power spectrum is evaluated.
+              power spectrum is evaluated. Expected to be defined in terms of
+              *comoving* distance.
             * **P_lin_z:** (1d array) The redshifts at which the linear matter
               power spectrum is evaluated.
             * **P_lin:** (2d array) The evaluated linear matter power spectrum,
@@ -1061,7 +1062,7 @@ class TwoHaloProfile:
                  one_halo_def='critical',
                  one_halo=BBPSProfile, one_halo_args=(), one_halo_kwargs={},
                  allow_weird_h=False):
-        self.cosmo = cosmo
+        self.cosmo = cosmo.copy()
         omega_m, omega_b, h = cosmo['omega_m'], cosmo['omega_b'], cosmo['h0']
         hmb_m, hmb_z, hmb_b = cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b']
         hmf_m, hmf_z, hmf_f = cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_f']
@@ -1180,7 +1181,8 @@ class TwoHaloProfile:
                P_e(r | M^\\prime, z)`
 
         Args:
-            rs (array of float): The radii at which to compute :math:`\\xi`.
+            rs (array of float): The radii at which to compute :math:`\\xi`. NB
+                                 this is physical (NOT comoving) distance.
             ks (array of float): The wavenumbers to compute the Fourier
                                  transform.
             z (float): Redshift to use.
@@ -1194,7 +1196,11 @@ class TwoHaloProfile:
                                               epsabs=epsabs,
                                               epsrel=epsrel)
 
-        Ps = self.P_lin(ks, z)
+        # The matter power spectrum uses *comoving* units, we want *physical*
+        # units, hence `/ (1 + z)`
+        # (We would also need a (1 + z)**3 in front of P_lin, but it actually
+        #  cancels with the HMF 1/volume)
+        Ps = self.P_lin(ks / (1 + z), z)
         radial_term = inverse_spherical_fourier_transform(rs, ks, Ps * igrnds,
                                                           limit=limit,
                                                           epsabs=epsabs,
@@ -1257,7 +1263,7 @@ class TwoHaloProfile:
         # First compute a grid of the profile in mass-radius
         profiles = np.zeros((nM, rs.size), dtype=np.double)
         for Mi, M in enumerate(Ms_one_halo):
-            pmodel = self._profile_model(M, z,
+            pmodel = self._profile_model(M, z, self.cosmo,
                                          *self._one_halo_args,
                                          **self._one_halo_kwargs)
             profiles[Mi] = pmodel.pressure(rs)
