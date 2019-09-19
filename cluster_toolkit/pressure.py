@@ -891,8 +891,9 @@ class BBPSProfile(PressureProfile):
                     miscent_offset=None,
                     sigma_beam=PLANCK_SIGMA_PSF,
                     nr=1000, nM=1000,
+                    nk=100,
                     limit=1000,
-                    epsabs=1e-25,
+                    epsabs=1e-12,
                     epsrel=1e-3):
         '''
         Computes the observed 1-halo Compton-y profile of the cluster, i.e.
@@ -928,7 +929,7 @@ class BBPSProfile(PressureProfile):
             ks_min = 1 / (2*np.pi*rmax)
             ks_max = 2*np.pi / (rmin)
             # TODO customize nk?
-            ks = np.geomspace(ks_min, ks_max, 100)
+            ks = np.geomspace(ks_min, ks_max, nk)
 
         ft_pressure = self.fourier_pressure(ks)
 
@@ -1123,7 +1124,7 @@ class BBPSProfile(PressureProfile):
                                  epsabs, epsrel)
 
         if rc != 0:
-            msg = 'C_projected_P_BBPS returned error code: {}'.format(rc)
+            msg = 'fourier_P_BBPS returned error code: {}'.format(rc)
             raise RuntimeError(msg)
 
         if scalar_input:
