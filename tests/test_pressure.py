@@ -1,3 +1,4 @@
+from __future__ import division
 from cluster_toolkit import pressure as pp
 from cosmology import get_cosmology, convert_mass
 from itertools import product

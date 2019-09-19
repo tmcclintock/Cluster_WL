@@ -32,18 +32,26 @@ A general class for computing the 2-halo correlation is given in
 TODO: Document expected 1-halo arguments used by the 2-halo class.
 '''
 
+from __future__ import division
+import abc
 from astropy.convolution import Gaussian2DKernel, convolve_fft
 from cluster_toolkit import _dcast, _lib
 import numpy as np
 from scipy.integrate import quad
 from scipy.interpolate import interp1d, interp2d
 import scipy.special as sp
+import sys
 
 # Battaglia best fit parameters
 _BBPS_params_P_0 = (18.1, 0.154, -0.758)
 _BBPS_params_x_c = (0.497, -0.00865, 0.731)
 _BBPS_params_beta = (4.35, 0.0393, 0.415)
 _pressure_to_y = 1.61574202e+15
+
+# The Planck PSF beam is (modeled as) a gaussian with this standard
+# deviation (in arcmin)
+# (The FWHM is 10 arcmin, hence the math)
+PLANCK_SIGMA_PSF = 5 / np.sqrt(2 * np.log(2))
 
 
 def _rho_crit(z, omega_m, h):
@@ -451,7 +459,7 @@ def create_image(fn, theta=15, n=200):
 
 # TODO: should we allow a custom kernel?
 def create_convolved_profile(fn, theta=15, n=200,
-                             sigma=5 / np.sqrt(2 * np.log(2))):
+                             sigma=PLANCK_SIGMA_PSF):
     '''
     Convolves the profile `fn` with a gaussian with std == :math`\sigma`, and
     returns the new 1D profile. We don't recommend using this directly.
@@ -478,81 +486,55 @@ def create_convolved_profile(fn, theta=15, n=200,
     return np.diag(rs)[n//2:], np.diag(convolved)[n//2:]
 
 
-class BBPSProfile:
+# Some tricky stuff with abstract base class and py2/3 compatibility
+if sys.version_info.major < 3:
+    __pprofile_supclass = object
+else:
+    __pprofile_supclass = abc.ABC
+
+
+class PressureProfile(__pprofile_supclass):
+    if sys.version_info.major < 3:
+        __metaclass__ = abc.ABCMeta
     '''
-    The best-fit pressure profile presented in BBPS.
-
-    The 3D pressure profile is computed in :meth:`pressure`, and
-    the projected pressure and Compton y are computed in
-    :meth:`projected_pressure` and :meth:`compton_y`.
-
-    >>> halo = BBPSProfile(3e14, 0.2, 0.04, 0.28)
-    >>> # Let's compute the pressure profile over a small radial range
-    >>> halo.pressure(np.linspace(0.1, 5, 10))
-    array([9.10170657e-20, 2.87696683e-21, 3.92779676e-22, 9.39464388e-23,
-           3.06798145e-23, 1.22290395e-23, 5.60028834e-24, 2.84086857e-24,
-           1.55884172e-24, 9.10278668e-25])
-    >>> # Now let's do it in absolute units
-    >>> h0 = 0.8
-    >>> h0**(8/3) * halo.pressure(np.linspace(0.1, 5, 10) * h0**(2/3))
-    array([4.41304440e-20, 2.13323485e-21, 3.46223667e-22, 9.09642709e-23,
-           3.15108279e-23, 1.30793006e-23, 6.16910021e-24, 3.20053361e-24,
-           1.78752532e-24, 1.05882458e-24])
+    Abstract base class for cluster pressure profiles. Subclasses need only
+    define the parameters and the method `pressure`, and the projection, fourier
+    transforms, and convolution will automatically be available. They can
+    overload more functions if they wish (if e.g. there is an analytical
+    solution to the projection or FT, or to adjust between a
+    :math:`M_{\Delta c}` and :math:`M_{\Delta m}` mass definition).
 
     Args:
-        M (float):
-            Cluster :math:`M_{\\Delta c}`, in Msun.  **NB** this is the
-            **CRITICAL MASS OVERDENSITY** mass definition.
-        z (float): Cluster redshift.
+        M (float): Mass of the cluster, default :math:`M_{200 c}` in
+                   :math:`M_{sun}`. Subclasses may use a different mass
+                   definition.
+        z (float): Redshift of the cluster center.
         cosmo (dictionary):
             A dictionary of cosmological parameters. Expected to
-            contain the following:
+            contain the following (subclasses may require more or less):
 
             * **omega_b:** (float) Baryon fraction.
             * **omega_m:** (float) Mass fraction.
-            * **h0:** (float) Reduced hubble constant.
-        params_P_0 (tuple):
-            3-tuple of :math:`P_0` mass, redshift dependence parameters A,
-            :math:`\\alpha_m`, :math:`\\alpha_z`, respectively. See BBPS
-            Equation 11. Default is BBPS's best-fit.
-        params_x_c (tuple):
-            3-tuple of :math:`x_c` mass, redshift dependence, same as
-            `params_P_0`. Default is BBPS's best-fit.
-        params_beta (tuple):
-            3-tuple of :math:`\\beta` mass, redshift dependence, same as
-            `params_P_0`. Default is BBPS's best-fit.
-        alpha (float): Profile parameter. See BBPS Eq. 10.
-        gamma (float): Profile parameter. See BBPS Eq. 10.
-        delta (float): Halo overdensity :math:`\\Delta`.
+            * **h0:** (float) Reduced hubble constant,
+              :math:`H_0 / (100 km s^{-1} Mpc^{-1})`.
+        delta (float): The matter overdensity of the mass definition, the
+                       :math:`\Delta` in :math:`M_{\Delta c}`. Default of 200
     '''
-    def __init__(self, M, z,
-                 cosmo,
-                 params_P_0=_BBPS_params_P_0,
-                 params_x_c=_BBPS_params_x_c,
-                 params_beta=_BBPS_params_beta,
-                 M_pivot=1e14,
-                 alpha=1, gamma=-0.3,
-                 delta=200):
-        # Halo definition
+    def __init__(self, M, z, cosmo, delta=200):
         self.__M = M
         self.__z = z
         self.__delta = delta
 
-        # Cosmological info
         self.__omega_b = cosmo['omega_b']
         self.__omega_m = cosmo['omega_m']
         self.__h = cosmo['h0']
 
-        # Profile fit parameters
-        self.__params_P_0 = params_P_0
-        self.__params_x_c = params_x_c
-        self.__params_beta = params_beta
-        self.__M_pivot = M_pivot
-        self.alpha = alpha
-        self.gamma = gamma
-
-        # Set parameters
-        self._update_halo()
+    def _update_halo(self):
+        self.__R_delta = R_delta(self.M, self.z, self.omega_m, self.h,
+                                 delta=self.delta)
+        self.__P_delta = P_delta(self.M, self.z,
+                                 self.omega_b, self.omega_m, self.h,
+                                 delta=self.delta)
 
     def update_halo(self, M, z, delta=200):
         '''
@@ -587,18 +569,6 @@ class BBPSProfile:
         self.__h = cosmo['h0']
         self._update_halo()
         return self
-
-    def _update_halo(self):
-        self.__R_delta = R_delta(self.M, self.z, self.omega_m, self.h,
-                                 delta=self.delta)
-        self.__P_delta = P_delta(self.M, self.z, self.omega_b, self.omega_m,
-                                 self.__h, delta=self.delta)
-        self.__P_0 = self._A(self.M, self.z, *self.__params_P_0,
-                             **{'M_pivot': self.__M_pivot})
-        self.__x_c = self._A(self.M, self.z, *self.__params_x_c,
-                             **{'M_pivot': self.__M_pivot})
-        self.__beta = self._A(self.M, self.z, *self.__params_beta,
-                              **{'M_pivot': self.__M_pivot})
 
     @property
     def M(self):
@@ -699,6 +669,91 @@ class BBPSProfile:
             :math:`M_{sun} s^{-2} \\text{Mpc}^{-1}`
         '''
         return self.__P_delta
+
+    @abc.abstractmethod
+    def pressure(self):
+        pass
+
+
+class BBPSProfile(PressureProfile):
+    '''
+    The best-fit pressure profile presented in BBPS.
+
+    The 3D pressure profile is computed in :meth:`pressure`, and
+    the projected pressure and Compton y are computed in
+    :meth:`projected_pressure` and :meth:`compton_y`.
+
+    >>> halo = BBPSProfile(3e14, 0.2, 0.04, 0.28)
+    >>> # Let's compute the pressure profile over a small radial range
+    >>> halo.pressure(np.linspace(0.1, 5, 10))
+    array([9.10170657e-20, 2.87696683e-21, 3.92779676e-22, 9.39464388e-23,
+           3.06798145e-23, 1.22290395e-23, 5.60028834e-24, 2.84086857e-24,
+           1.55884172e-24, 9.10278668e-25])
+    >>> # Now let's do it in absolute units
+    >>> h0 = 0.8
+    >>> h0**(8/3) * halo.pressure(np.linspace(0.1, 5, 10) * h0**(2/3))
+    array([4.41304440e-20, 2.13323485e-21, 3.46223667e-22, 9.09642709e-23,
+           3.15108279e-23, 1.30793006e-23, 6.16910021e-24, 3.20053361e-24,
+           1.78752532e-24, 1.05882458e-24])
+
+    Args:
+        M (float):
+            Cluster :math:`M_{\\Delta c}`, in Msun.  **NB** this is the
+            **CRITICAL MASS OVERDENSITY** mass definition.
+        z (float): Cluster redshift.
+        cosmo (dictionary):
+            A dictionary of cosmological parameters. Expected to
+            contain the following:
+
+            * **omega_b:** (float) Baryon fraction.
+            * **omega_m:** (float) Mass fraction.
+            * **h0:** (float) Reduced hubble constant.
+        params_P_0 (tuple):
+            3-tuple of :math:`P_0` mass, redshift dependence parameters A,
+            :math:`\\alpha_m`, :math:`\\alpha_z`, respectively. See BBPS
+            Equation 11. Default is BBPS's best-fit.
+        params_x_c (tuple):
+            3-tuple of :math:`x_c` mass, redshift dependence, same as
+            `params_P_0`. Default is BBPS's best-fit.
+        params_beta (tuple):
+            3-tuple of :math:`\\beta` mass, redshift dependence, same as
+            `params_P_0`. Default is BBPS's best-fit.
+        alpha (float): Profile parameter. See BBPS Eq. 10.
+        gamma (float): Profile parameter. See BBPS Eq. 10.
+        delta (float): Halo overdensity :math:`\\Delta`.
+    '''
+    def __init__(self, M, z,
+                 cosmo,
+                 params_P_0=_BBPS_params_P_0,
+                 params_x_c=_BBPS_params_x_c,
+                 params_beta=_BBPS_params_beta,
+                 M_pivot=1e14,
+                 alpha=1, gamma=-0.3,
+                 delta=200):
+        # Halo definition
+        # (we use this instead of just super() for py2 compatibility)
+        super(BBPSProfile, self).__init__(M, z, cosmo, delta=delta)
+
+        # Profile fit parameters
+        self.__params_P_0 = params_P_0
+        self.__params_x_c = params_x_c
+        self.__params_beta = params_beta
+        self.__M_pivot = M_pivot
+        self.alpha = alpha
+        self.gamma = gamma
+
+        # Set parameters
+        self._update_halo()
+
+    def _update_halo(self):
+        # (we use this instead of just super() for py2 compatibility)
+        super(BBPSProfile, self)._update_halo()
+        self.__P_0 = self._A(self.M, self.z, *self.__params_P_0,
+                             **{'M_pivot': self.__M_pivot})
+        self.__x_c = self._A(self.M, self.z, *self.__params_x_c,
+                             **{'M_pivot': self.__M_pivot})
+        self.__beta = self._A(self.M, self.z, *self.__params_beta,
+                              **{'M_pivot': self.__M_pivot})
 
     @staticmethod
     def _A(M, z, A_0, alpha_m, alpha_z, M_pivot=1e14):
@@ -822,8 +877,44 @@ class BBPSProfile:
         return ch * self.projected_pressure(r, limit=limit,
                                             epsabs=epsabs, epsrel=epsrel)
 
+    def convolved_y_FT(self, thetas, ks, da,
+                       Xh=0.76,
+                       miscent_offset=None,
+                       sigma_beam=PLANCK_SIGMA_PSF,
+                       nr=1000, nM=1000,
+                       limit=1000,
+                       epsabs=1e-25,
+                       epsrel=1e-3):
+
+        ft_pressure = self._C_fourier_pressure(ks)
+
+        # Due to the projection-slice thm, the 3D FT is the same as the
+        # 2D FT of a projection of the 3D distribution.
+        # Basically, we can skip a step by using the 3D FT of the 2halo as the
+        # 2D FT of the projected 2halo
+        y_conversion = _pressure_to_y * (2*Xh + 2) / (5*Xh + 3)
+        fourier_2h = y_conversion * ft_pressure
+
+        # Transverse radii - convert theta (in arcmin) to physical radii
+        rs = da * (np.pi / 180) * (thetas / 60)
+
+        # If a miscentering distance has been specified, apply it
+        if miscent_offset is not None:
+            fourier_2h *= sp.j0(miscent_offset * ks)
+
+        # If a beam width has been specified, apply it
+        if sigma_beam is not None:
+            # Convert sigma from arcmin to physical units
+            sigma_phys = da * (np.pi / 180) * (sigma_beam / 60)
+            fourier_2h *= np.exp(-ks*ks*sigma_phys*sigma_phys/2)
+
+        return inverse_circular_fourier_transform(rs, ks, fourier_2h,
+                                                  limit=limit,
+                                                  epsabs=epsabs,
+                                                  epsrel=epsrel) / (1 + self.z)
+
     def convolved_y(self, da, theta=15, n=200,
-                    sigma_beam=5 / np.sqrt(2 * np.log(2)),
+                    sigma_beam=PLANCK_SIGMA_PSF,
                     Xh=0.76, limit=1000,
                     epsabs=1e-14, epsrel=1e-3):
         '''
@@ -1284,7 +1375,7 @@ class TwoHaloProfile:
     def convolved_y_FT(self, thetas, ks, z, da,
                        Xh=0.76,
                        miscent_offset=None,
-                       sigma_beam=5 / np.sqrt(2 * np.log(2)),
+                       sigma_beam=PLANCK_SIGMA_PSF,
                        nr=1000, nM=1000,
                        limit=1000,
                        epsabs_2h=1e-25,
@@ -1324,7 +1415,7 @@ class TwoHaloProfile:
     def convolved_y(self, da, z, rs_proj, rs_2h, ks,
                     Xh=0.76,
                     theta=15, n=200,
-                    psf_sigma=5 / np.sqrt(2 * np.log(2)),
+                    psf_sigma=PLANCK_SIGMA_PSF,
                     nM=1000, limit=1000,
                     epsabs_2h=1e-25,
                     epsabs_abel=1e-23,
