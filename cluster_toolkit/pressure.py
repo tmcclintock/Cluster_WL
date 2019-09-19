@@ -1435,7 +1435,7 @@ class TwoHaloProfile:
                                               limit=limit,
                                               epsabs=epsabs_2h,
                                               epsrel=epsrel)
-        Ps = self.P_lin(ks, z)
+        Ps = self.P_lin(ks / (1 + z), z)
 
         # Due to the projection-slice thm, the 3D FT is the same as the
         # 2D FT of a projection of the 3D distribution.
