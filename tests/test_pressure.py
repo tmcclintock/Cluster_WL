@@ -110,9 +110,8 @@ def test_y_projection():
         M200, z = row1.M200, row1.z
         bbps = pp.BBPSProfile(M200, z, cosmo)
         for r, y in zip(bin_.r, bin_.y):
-            oury = bbps.compton_y(r * cosmo['h0']**(2/3))
+            oury = bbps.compton_y(r)
             # Convert to dimensionless `y` (see pp.projected_y_BBPS)
-            oury *= cosmo['h0']**(8/3)
             assert abs((oury - y) / y) < 1e-2
 
 
@@ -125,8 +124,8 @@ def test_pressure_fourier():
     for m, z in product(Ms, zs):
         halo = pp.BBPSProfile(m, z, cosmo)
         # Compare both Python and C versions of the Fourier transform
-        ks, ps = halo.fourier_pressure(rmin, nr)
-        ps_C = halo._C_fourier_pressure(ks)
+        ks, ps = halo._fft_fourier_pressure(rmin, nr)
+        ps_C = halo.fourier_pressure(ks)
         msk = ks < 10
         assert np.all(np.abs((ps[msk] - ps_C[msk]) / ps[msk]) < 1e-2)
 
@@ -146,7 +145,7 @@ def test_inverse_3d_fourier():
     true_pressure = halo.pressure(rs)
 
     # Convert the pressure profile to Fourier space, and back again
-    Fs = halo._C_fourier_pressure(ks)
+    Fs = halo.fourier_pressure(ks)
     epsabs = halo.pressure(halo.R_delta * 2)
     ifft_pressure = pp.inverse_spherical_fourier_transform(rs, ks, Fs,
                                                            epsabs=epsabs)
@@ -318,7 +317,7 @@ def test_convolution_convergence():
     da_interp = interp1d(cosmo['z_chi'], cosmo['d_a'])
     for (M, z) in zip(Ms, zs):
         halo = pp.BBPSProfile(M, z, cosmo)
-        convolved = [halo.convolved_y(da=da_interp(z), n=n) for n in ns]
+        convolved = [halo.convolved_y_fft(da=da_interp(z), n=n) for n in ns]
         fig, axs = plt.subplots(nrows=2, figsize=(8, 6), sharex=True,
                                 gridspec_kw={'height_ratios': [2, 1]})
         # Plot first
@@ -376,18 +375,15 @@ def test_convolved_2h():
         m200c = np.geomspace(m200c_lo * 0.95, m200c_hi * 1.05, cosmo['hmf_m'].size)
         m200m = convert_mass(m200c, z, mdef_in='200c', mdef_out='200m')
         # Do two-halo computation
-        th = pp.TwoHaloProfile(cosmo['omega_b'], cosmo['omega_m'], cosmo['h0'],
-                               cosmo['hmb_m'], cosmo['hmb_z'], cosmo['hmb_b'],
-                               cosmo['hmf_m'], cosmo['hmf_z'], cosmo['hmf_dndm'],
-                               cosmo['P_lin_k'], cosmo['P_lin_z'], cosmo['P_lin_p'],
-                               m200m, m200c)
+        cosmo['hmf_f'] = cosmo['hmf_dndm']
+        th = pp.TwoHaloProfile(cosmo, m200m, m200c)
 
         da = cosmo['d_a_i'](z)
         # Compare the mock-image-fft method to the analytic Fourier-space
         # convolution
         thetas, two_halo_fft_convolved = th.convolved_y(da, z, rs_proj, rs_2h, ks,
                                                         theta=30)
-        two_halo_psl_convolved = th.convolved_y_FT(thetas, ks, z, da)
+        two_halo_psl_convolved = th.convolved_y_FT(thetas, da, z, ks)
         axs[0].plot(thetas, two_halo_fft_convolved, label='FFT method, z={}'.format(z))
         axs[0].plot(thetas, two_halo_psl_convolved, label='Proj.-slice metho, z={}'.format(z))
         axs[0].loglog()

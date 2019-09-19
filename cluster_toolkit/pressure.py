@@ -674,6 +674,41 @@ class PressureProfile(__pprofile_supclass):
     def pressure(self):
         pass
 
+    def projected_pressure(self, rs):
+        # TODO
+        pass
+
+    def compton_y(self, r, Xh=0.76, limit=1000, epsabs=1e-15, epsrel=1e-3):
+        '''
+        Projected Compton-y parameter along the line of sight, at a set of
+        perpendicular distances `r` from the halo.
+        All arguments have the same meaning as `projected_pressure`.
+
+        Args:
+            r (float or array): Radius from the cluster center, in Mpc.
+
+        Returns:
+            float or array: Compton y parameter. Unitless.
+        '''
+        # The constant is \sigma_T / (m_e * c^2), the Thompson cross-section
+        # divided by the mass-energy of the electron, in units of s^2 Msun^{-1}.
+        # Source: Astropy constants and unit conversions.
+        # We need to convert from GAS pressure to ELECTRON pressure. This is the
+        # equation to do so, see BBPS p. 3.
+        ch = (2 * Xh + 2) / (5 * Xh + 3) * _pressure_to_y
+        return ch * self.projected_pressure(r, limit=limit,
+                                            epsabs=epsabs, epsrel=epsrel)
+
+    def fourier_pressure(self, ks):
+        # TODO
+        pass
+
+    def convolved_y(self, thetas, da,
+                    sigma_beam=PLANCK_SIGMA_PSF,
+                    Xh=0.76):
+        # TODO
+        pass
+
 
 class BBPSProfile(PressureProfile):
     '''
@@ -686,12 +721,6 @@ class BBPSProfile(PressureProfile):
     >>> halo = BBPSProfile(3e14, 0.2, 0.04, 0.28)
     >>> # Let's compute the pressure profile over a small radial range
     >>> halo.pressure(np.linspace(0.1, 5, 10))
-    array([9.10170657e-20, 2.87696683e-21, 3.92779676e-22, 9.39464388e-23,
-           3.06798145e-23, 1.22290395e-23, 5.60028834e-24, 2.84086857e-24,
-           1.55884172e-24, 9.10278668e-25])
-    >>> # Now let's do it in absolute units
-    >>> h0 = 0.8
-    >>> h0**(8/3) * halo.pressure(np.linspace(0.1, 5, 10) * h0**(2/3))
     array([4.41304440e-20, 2.13323485e-21, 3.46223667e-22, 9.09642709e-23,
            3.15108279e-23, 1.30793006e-23, 6.16910021e-24, 3.20053361e-24,
            1.78752532e-24, 1.05882458e-24])
@@ -730,7 +759,8 @@ class BBPSProfile(PressureProfile):
                  M_pivot=1e14,
                  alpha=1, gamma=-0.3,
                  delta=200):
-        # Halo definition
+        # Halo definition, default (M_{Delta c} with Battaglia's P_Delta,
+        #   R_Delta definitions) is fine
         # (we use this instead of just super() for py2 compatibility)
         super(BBPSProfile, self).__init__(M, z, cosmo, delta=delta)
 
@@ -770,7 +800,7 @@ class BBPSProfile(PressureProfile):
 
         Args:
             r (float or array): Radii from the cluster center,
-                                in :math:`Mpc`. If an array, an array
+                                in physical :math:`Mpc`. If an array, an array
                                 is returned, if a scalar, a scalar is returned.
 
         Returns:
@@ -856,37 +886,51 @@ class BBPSProfile(PressureProfile):
             return P_out, P_err_out
         return P_out
 
-    def compton_y(self, r, Xh=0.76, limit=1000, epsabs=1e-15, epsrel=1e-3):
+    def convolved_y(self, thetas, da, ks=None,
+                    Xh=0.76,
+                    miscent_offset=None,
+                    sigma_beam=PLANCK_SIGMA_PSF,
+                    nr=1000, nM=1000,
+                    limit=1000,
+                    epsabs=1e-25,
+                    epsrel=1e-3):
         '''
-        Projected Compton-y parameter along the line of sight, at a set of
-        perpendicular distances `r` from the halo.
-        All arguments have the same meaning as `projected_pressure`.
+        Computes the observed 1-halo Compton-y profile of the cluster, i.e.
+        the Compton-y profile convolved with a Gaussian beam function and an
+        (optional) miscentring offset.
 
         Args:
-            r (float or array): Radius from the cluster center, in Mpc.
-
-        Returns:
-            float or array: Compton y parameter. Unitless.
+            thetas (float or array):
+                Angles from cluster center at which to compute Compton-y param.
+                Units: arcmin
+            da (float):
+                Angular diameter distance at the cluster's redshift, i.e.
+                physical distance on the sky = :math:`\\theta da`.
+            ks (array):
+                Wavenumbers at which to compute Fourier transform of 3d 1halo
+                profile. If not provided, a grid is automatically chosen and
+                generated.
+                Units: 1/(physical Mpc)
+            Xh (float): Primordial hydrogen fraction.
+            miscent_offset (float or None):
+                Miscentering distance, in physical Mpc. If None (default), it is
+                assumed to be zero.
+            sigma_beam (float):
+                Standard deviation of the Gaussian PSF. Default is Planck's.
         '''
-        # The constant is \sigma_T / (m_e * c^2), the Thompson cross-section
-        # divided by the mass-energy of the electron, in units of s^2 Msun^{-1}.
-        # Source: Astropy constants and unit conversions.
-        # We need to convert from GAS pressure to ELECTRON pressure. This is the
-        # equation to do so, see BBPS p. 3.
-        ch = (2 * Xh + 2) / (5 * Xh + 3) * _pressure_to_y
-        return ch * self.projected_pressure(r, limit=limit,
-                                            epsabs=epsabs, epsrel=epsrel)
+        theta_to_r = (da / 60) * (np.pi / 180)
 
-    def convolved_y_FT(self, thetas, ks, da,
-                       Xh=0.76,
-                       miscent_offset=None,
-                       sigma_beam=PLANCK_SIGMA_PSF,
-                       nr=1000, nM=1000,
-                       limit=1000,
-                       epsabs=1e-25,
-                       epsrel=1e-3):
+        # Generate a log-spaced grid of 100 ks which covers our r region of
+        # interest
+        if ks is None:
+            rmin = thetas.min() * theta_to_r
+            rmax = thetas.max() * theta_to_r
+            ks_min = 1 / (2*np.pi*rmax)
+            ks_max = 2*np.pi / (rmin)
+            # TODO customize nk?
+            ks = np.geomspace(ks_min, ks_max, 100)
 
-        ft_pressure = self._C_fourier_pressure(ks)
+        ft_pressure = self.fourier_pressure(ks)
 
         # Due to the projection-slice thm, the 3D FT is the same as the
         # 2D FT of a projection of the 3D distribution.
@@ -896,7 +940,7 @@ class BBPSProfile(PressureProfile):
         fourier_2h = y_conversion * ft_pressure
 
         # Transverse radii - convert theta (in arcmin) to physical radii
-        rs = da * (np.pi / 180) * (thetas / 60)
+        rs = thetas * theta_to_r
 
         # If a miscentering distance has been specified, apply it
         if miscent_offset is not None:
@@ -913,13 +957,16 @@ class BBPSProfile(PressureProfile):
                                                   epsabs=epsabs,
                                                   epsrel=epsrel) / (1 + self.z)
 
-    def convolved_y(self, da, theta=15, n=200,
-                    sigma_beam=PLANCK_SIGMA_PSF,
-                    Xh=0.76, limit=1000,
-                    epsabs=1e-14, epsrel=1e-3):
+    def convolved_y_fft(self, da, theta=15, n=200,
+                        sigma_beam=PLANCK_SIGMA_PSF,
+                        Xh=0.76, limit=1000,
+                        epsabs=1e-14, epsrel=1e-3):
         '''
-        Create an observed Compton-y profile of a halo by convolving it with
-        a Gaussian beam function.
+        Create an observed Compton-y profile of a halo by "manually" convolving
+        it with a Gaussian beam function. It creates a "raw exposure" by making
+        a grid of projected Compton-y, and convolves it with a Gaussian of the
+        specified size using scipy functions. It returns a pair of arrays,
+        (thetas, ys), for interpolation by the user.
 
         Args:
             da (float): Angular diameter distance at cluster redshift.
@@ -944,8 +991,10 @@ class BBPSProfile(PressureProfile):
         return create_convolved_profile(image_func,
                                         theta=theta, n=n, sigma=sigma_beam)
 
-    def fourier_pressure(self, rmax, nr):
+    def _fft_fourier_pressure(self, rmax, nr):
         '''
+        THIS FUNCTION IS FOR TESTING ONLY
+
         Computes the 3D fourier transform of the BBPS pressure profile.
         Necessary for computing the 2-halo term. Computed by evaluating the
         pressure profile at a discrete set of radii, and applying a fast
@@ -1019,10 +1068,10 @@ class BBPSProfile(PressureProfile):
                     chi_cluster + dist * self.R_delta,
                     epsrel=epsrel)[0]
 
-    def _C_fourier_pressure(self, k,
-                            limit=1000,
-                            epsabs=1e-23, epsrel=1e-3,
-                            return_errs=False):
+    def fourier_pressure(self, k,
+                         limit=1000,
+                         epsabs=1e-23, epsrel=1e-3,
+                         return_errs=False):
         '''
         Computes the 3D fourier transform of the BBPS pressure profile.
         Necessary for computing the 2-halo term.
@@ -1372,7 +1421,8 @@ class TwoHaloProfile:
 
         return weighted_profiles
 
-    def convolved_y_FT(self, thetas, ks, z, da,
+    # TODO make ks optional
+    def convolved_y_FT(self, thetas, da, z, ks,
                        Xh=0.76,
                        miscent_offset=None,
                        sigma_beam=PLANCK_SIGMA_PSF,
