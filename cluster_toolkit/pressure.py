@@ -36,6 +36,7 @@ from __future__ import division
 import abc
 from astropy.convolution import Gaussian2DKernel, convolve_fft
 from cluster_toolkit import _dcast, _lib
+import math
 import numpy as np
 from scipy.integrate import quad
 from scipy.interpolate import interp1d, interp2d
@@ -449,41 +450,70 @@ def integrate_spline(xs, ys, a, b):
 # Functions for performing Image Convolutions #
 ###############################################
 
-def create_image(fn, theta=15, n=200):
-    xs, ys = np.meshgrid(range(n), range(n))
-    midpt = (n - 1) / 2
-    rs = (theta / midpt) * np.sqrt((xs - midpt)**2 + (ys - midpt)**2)
-    y = fn(rs.flatten()).reshape(rs.shape)
-    return rs, y
+def create_image(fn, theta_min, theta_max, sigma, nsig=3):
+    # Compute the dimensions of the image, and create it
+    # Make sure we have resolution to capture the beam
+    dtheta = min(theta_min / np.sqrt(2), (sigma / 10))
+    sigma_edge = math.ceil((nsig*sigma / dtheta + 1) / 2)
+    side_len = 2*sigma_edge
+    long_side_len = side_len + math.ceil((theta_max / dtheta + 1) / 2)
+
+    # Create image coordinates
+    raw_xs, raw_ys = np.meshgrid(np.arange(long_side_len),
+                                 np.arange(side_len))
+    xs, ys = (raw_xs - sigma_edge) * 2 + 1, (raw_ys - sigma_edge) * 2 + 1
+    rs = dtheta * np.sqrt(xs**2 + ys**2)
+
+    # Create the radii at which to interpolate
+    rs_interp = rs[0, :].copy()
+    rs_interp[:sigma_edge] = rs[sigma_edge, sigma_edge:0:-1]
+
+    ys = interp1d(rs_interp, fn(rs_interp))
+    return 2*dtheta, rs, ys(rs.flatten()).reshape(rs.shape)
 
 
 # TODO: should we allow a custom kernel?
-def create_convolved_profile(fn, theta=15, n=200,
-                             sigma=PLANCK_SIGMA_PSF):
+def convolve_profile(fn, thetas,
+                     sigma=PLANCK_SIGMA_PSF,
+                     nsig=3):
     '''
     Convolves the profile `fn` with a gaussian with std == :math`\sigma`, and
     returns the new 1D profile. We don't recommend using this directly.
 
+    It creates a long rectangular "fake image," where the long edge runs from
+    (-nsig*sigma) to (thetas.max() + nsig*sigma), and the short edge funs from
+    (-nsig*sigma) to (+nsig*sigma). The resolution of the image is governed by
+    thetas.min(), so make sure to include a wide range of theta values.
+
     Args:
-        fn (function): The function to be convolved. Should accept an array. \
-                       Should take a single variable with units of `theta`.
-        theta (float): Half-width of the image. i.e., for a 30 x 30 arcmin \
-                       image centered on radius = 0, use theta = 15. \
-                       (The units are not necessarily arcmin, but whatever the \
-                       argument to `fn` uses.)
-        n (int): The side length of the image, in pixels. The convolution is \
-                 performed on an n x n image.
-        sigma (float): The standard deviation of the Gaussian beam, in the \
-                       same units as `theta`. The default is the Planck beam, \
-                       in arcmin.
+        fn (function):
+            The function to be convolved. Should accept an array. Should take
+            a single variable with the same units as `theta`.
+        thetas (array of floats):
+            The angles at which to evaluate the convolved profile, in arcmin.
+        sigma (float):
+            The standard deviation of the Gaussian beam, in the same units as
+            `theta`. The default is the Planck beam, in arcmin.
+        nsig (float):
+            The "extra sigmas" to include in the convolution.
 
     Returns:
-        (array, array): Radii and convolved profile. Each array is size n // 2.
+        array: Convolved profile corresponding to thetas. Same shape as thetas.
     '''
-    rs, img = create_image(fn, theta, n)
-    kernel = Gaussian2DKernel(sigma * (n / 2) / theta)
+    min_theta = thetas.min()
+    if min_theta == 0.0:
+        min_theta = thetas[1]
+    dtheta, rs, img = create_image(fn, min_theta*0.99, thetas.max()*1.01,
+                                   sigma=sigma, nsig=nsig)
+    short_sidelen, long_sidelen = rs.shape
+
+    kernel = Gaussian2DKernel(sigma / dtheta)
     convolved = convolve_fft(img, kernel)
-    return np.diag(rs)[n//2:], np.diag(convolved)[n//2:]
+
+    midpt = short_sidelen//2
+    rs_interp, ys = rs[midpt, midpt:], convolved[midpt, midpt:]
+
+    return interp1d(rs_interp, ys)(thetas)
 
 
 # Some tricky stuff with abstract base class and py2/3 compatibility
@@ -958,8 +988,9 @@ class BBPSProfile(PressureProfile):
                                                   epsabs=epsabs,
                                                   epsrel=epsrel) / (1 + self.z)
 
-    def convolved_y_fft(self, da, theta=15, n=200,
+    def convolved_y_fft(self, thetas, da,
                         sigma_beam=PLANCK_SIGMA_PSF,
+                        nsig=5,
                         Xh=0.76, limit=1000,
                         epsabs=1e-14, epsrel=1e-3):
         '''
@@ -970,27 +1001,24 @@ class BBPSProfile(PressureProfile):
         (thetas, ys), for interpolation by the user.
 
         Args:
+            thetas (array): Angles at which to compute profile, in arcmin.
             da (float): Angular diameter distance at cluster redshift.
-            theta (float): Half-width of the convolved image, in arcmin.
-            n (int): The side length of the image, in pixels. The convolution \
-                     is performed on an n x n image.
-            sigma (float): The standard deviation of the Gaussian beam, in the \
-                           same units as `theta`. The default is the Planck \
+            sigma (float): The standard deviation of the Gaussian beam, in the
+                           same units as `theta`. The default is the Planck
                            beam, in arcmin.
+            nsig (float): The number of "extra sigma" to use in the convolution.
+                          See `create_image` for more info.
             Xh (float): Primordial hydrogen mass fraction.
 
         Returns:
-            (2-tuple of array): Pair of (rs, smoothed ys). `rs` runs from \
-                                :math:`(theta / (n // 2)) / 2` to \
-                                :math:`\\sqrt(2) theta`, and contains `n` \
-                                points.
+            (array): Smoothed ys, corresponding to `thetas`.
         '''
         def image_func(thetas):
             return self.compton_y(thetas * da / 60 * np.pi / 180,
                                   Xh=Xh, limit=limit,
                                   epsabs=epsabs, epsrel=epsrel)
-        return create_convolved_profile(image_func,
-                                        theta=theta, n=n, sigma=sigma_beam)
+        return convolve_profile(image_func, thetas,
+                                sigma=sigma_beam, nsig=nsig)
 
     def _fft_fourier_pressure(self, rmax, nr):
         '''
@@ -1463,10 +1491,10 @@ class TwoHaloProfile:
                                                   epsabs=epsabs_re,
                                                   epsrel=epsrel) / (1 + z)
 
-    def convolved_y(self, da, z, rs_proj, rs_2h, ks,
+    def convolved_y(self, thetas, da, z, rs_2h, ks,
                     Xh=0.76,
-                    theta=15, n=200,
                     psf_sigma=PLANCK_SIGMA_PSF,
+                    nsig=5,
                     nM=1000, limit=1000,
                     epsabs_2h=1e-25,
                     epsabs_abel=1e-23,
@@ -1476,10 +1504,9 @@ class TwoHaloProfile:
         parameter.
 
         Args:
+            thetas (array): The
             da (float): Angular diameter distance at `z`.
             z (float): Redshift to use.
-            rs_proj (array): The transverse distances at which to project.
-                             Units: :math:`Mpc`
             rs_2h (array): The radii at which to compute the 3D 2-halo term.
                            (The projection is performed on an interpolation
                            table, this is the spacing of that interpolation
@@ -1487,28 +1514,22 @@ class TwoHaloProfile:
                            Units: :math:`Mpc`
             ks (array): Wavenumbers to use for computing 3D 2h term.
                         Units: :math:`Mpc^{-1}`.
-            theta (float): Half-width of the convolved image, in arcmin.
-            n (int): The side length of the image, in pixels. The convolution
-                     is performed on an n x n image.
             psf_sigma (float): The standard deviation of the Gaussian beam. The
                                default is the Planck beam, in arcmin.
+            nsig (float)
 
         Returns:
-            (2-tuple of array): Pair of (rs, smoothed ys). `rs` runs from \
-                                :math:`(theta / (n // 2)) / 2` to \
-                                :math:`\\sqrt(2) theta`, and contains `n` \
-                                points.
+            (array): The convolved y profile corresponding to `thetas`.
         '''
-        projection = self.projected(rs_proj, rs_2h, ks, z,
-                                    nM=nM, limit=limit,
-                                    epsabs_2h=epsabs_2h,
-                                    epsabs_abel=epsabs_abel,
-                                    epsrel_abel=epsrel_abel)
-        y_conversion = _pressure_to_y * (2*Xh + 2) / (5*Xh + 3)
-        interp = interp1d(rs_proj, projection * y_conversion)
-
         def image_func(thetas):
             # Convert arcmin to physical transverse distance
-            return interp(thetas * da / 60 * np.pi / 180)
-        return create_convolved_profile(image_func,
-                                        theta=theta, n=n, sigma=psf_sigma)
+            rs_proj = thetas * (da / 60) * (np.pi / 180)
+            projection = self.projected(rs_proj, rs_2h, ks, z,
+                                        nM=nM, limit=limit,
+                                        epsabs_2h=epsabs_2h,
+                                        epsabs_abel=epsabs_abel,
+                                        epsrel_abel=epsrel_abel)
+            y_conversion = _pressure_to_y * (2*Xh + 2) / (5*Xh + 3)
+            return projection * y_conversion
+        return convolve_profile(image_func, thetas,
+                                sigma=psf_sigma, nsig=nsig)
