@@ -308,31 +308,38 @@ def test_abel_transform():
         assert cond.all()
 
 
-@pytest.mark.skip(reason='plots')
-def test_convolution_convergence():
+def test_convolution_methods():
+    '''
+    There are two convolution methods - one is an analytical method, performing
+    the convolution in fourier space and using GSL integration methods to
+    convert to and from fourier space. The other creates a "fake image" on a
+    grid, and uses astropy methods to perform the convolution. We want to test
+    that they are equivalent.
+    '''
+
+    epsabs = 1e-8
+    epsrel = 1e-3
+    Ms = [1e14, 5e14, 1e15]
+    zs = [0.1, 0.2, 0.3]
+
     cosmo = get_cosmology(0)
-    ns = (800, 400, 200, 100, 50, 25)
-    Ms = [1e13, 4e13, 8e13, 2e14, 6e14, 1e15]
-    zs = [0.2]
-    da_interp = interp1d(cosmo['z_chi'], cosmo['d_a'])
-    for (M, z) in zip(Ms, zs):
-        halo = pp.BBPSProfile(M, z, cosmo)
-        convolved = [halo.convolved_y_fft(da=da_interp(z), n=n) for n in ns]
-        fig, axs = plt.subplots(nrows=2, figsize=(8, 6), sharex=True,
-                                gridspec_kw={'height_ratios': [2, 1]})
-        # Plot first
-        axs[0].loglog()
-        for i, (rs, vals) in enumerate(convolved):
-            axs[0].plot(rs, vals, label='n = {}'.format(ns[i]))
-        axs[0].legend()
+    thetas = np.geomspace(0.1, 30, 100)
+    for M in Ms:
+        for z in zs:
+            da = cosmo['d_a_i'](z)
+            halo = pp.BBPSProfile(M, z, cosmo)
 
-        fid = interp1d(convolved[0][0], convolved[0][1], bounds_error=False)
-        for i, (rs, vals) in enumerate(convolved):
-            exp = fid(rs)
-            axs[1].plot(rs, (vals - exp) / exp, label='n = {}'.format(ns[i]))
-        axs[1].set_ylim((-0.02, 0.02))
+            integration_method = halo.convolved_y(thetas, da,
+                                                  epsabs=epsabs,
+                                                  epsrel=epsrel)
+            grid_method = halo.convolved_y_fft(thetas, da,
+                                               epsabs=epsabs,
+                                               epsrel=epsrel)
 
-    plt.show()
+            diff = integration_method - grid_method
+            frac_diff = np.abs(diff / integration_method)
+
+            assert np.all((np.abs(diff) < 2*epsabs) | (frac_diff < 0.01))
 
 
 @pytest.mark.skip(reason='plots')
