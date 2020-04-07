@@ -15,6 +15,7 @@
 
 #include "gsl/gsl_integration.h"
 #include "gsl/gsl_spline.h"
+#include "gsl/gsl_errno.h"
 #include <math.h>
 #include <stdio.h>
 
@@ -108,18 +109,21 @@ int Sigma_mis_single_at_R_arr(double*R, int NR, double*Rs, double*Sigma, int Ns,
 
   //Allocate things
   static int init_flag = 0;
+  // FIXME - the static variables are not thread safe
   static gsl_spline*spline = NULL;
   static gsl_interp_accel*acc = NULL;
   static gsl_integration_workspace*workspace = NULL;
   static integrand_params params;
   if (init_flag == 0){
-    init_flag = 1;
     spline = gsl_spline_alloc(gsl_interp_cspline, Ns);
     acc = gsl_interp_accel_alloc();
     workspace = gsl_integration_workspace_alloc(workspace_size);
+    if (!spline || !acc || !workspace)
+      return GSL_ENOMEM;
+    init_flag = 1;
   }
 
-  gsl_spline_init(spline, lnRs, Sigma, Ns);
+  int rc = gsl_spline_init(spline, lnRs, Sigma, Ns);
 
   params.acc = acc;
   params.spline = spline;
@@ -140,16 +144,19 @@ int Sigma_mis_single_at_R_arr(double*R, int NR, double*Rs, double*Sigma, int Ns,
   F.params = &params;
   
   for(i = 0; i < NR; i++){
+    if (rc != GSL_SUCCESS)
+      break;
+
     params.Rp  = R[i];
     params.Rp2 = R[i] * R[i];
-    gsl_integration_qag(&F, 0, M_PI, ABSERR, RELERR, workspace_size,
+    rc = gsl_integration_qag(&F, 0, M_PI, ABSERR, RELERR, workspace_size,
 			KEY, workspace, &result, &err);
     Sigma_mis[i] = result/M_PI;
   }
 
   //Static objects aren't freed
   free(lnRs);
-  return 0;
+  return rc;
 }
 
 /////////////////// SIGMA(R) INTEGRANDS BELOW //////////////////////
@@ -273,14 +280,16 @@ int Sigma_mis_at_R_arr(double*R, int NR, double*Rs, double*Sigma, int Ns,
   static gsl_integration_workspace*workspace2 = NULL;
   static integrand_params params;
   if (init_flag == 0){
-    init_flag = 1;
     spline = gsl_spline_alloc(gsl_interp_cspline, Ns);
     acc = gsl_interp_accel_alloc();
     workspace = gsl_integration_workspace_alloc(workspace_size);
     workspace2 = gsl_integration_workspace_alloc(workspace_size);
+    if (!spline || !acc || !workspace || !workspace2)
+      return GSL_ENOMEM;
+    init_flag = 1;
   }
 
-  gsl_spline_init(spline, lnRs, Sigma, Ns);
+  int rc = gsl_spline_init(spline, lnRs, Sigma, Ns);
 
   params.spline = spline;
   params.acc = acc;
@@ -296,7 +305,7 @@ int Sigma_mis_at_R_arr(double*R, int NR, double*Rs, double*Sigma, int Ns,
   params.rmax = Rs[Ns-1];
   params.lrmin = log(Rs[0]);
   params.lrmax = log(Rs[Ns-1]);
-  
+
   //Angular integral
   F.function = &angular_integrand;
   //Radial integral. Choice between rayliegh and gamma distributions
@@ -309,24 +318,27 @@ int Sigma_mis_at_R_arr(double*R, int NR, double*Rs, double*Sigma, int Ns,
     F_radial.function = &Gamma_integrand;
     break;
   }
-  
+
   //Assign the params struct to the GSL functions.
   F_radial.params = &params;
   params.F_radial = F_radial;
   F.params = &params;
-  
+
   //Angular integral first
   for(i = 0; i < NR; i++){
+    if (rc != GSL_SUCCESS)
+      break;
+
     params.Rp  = R[i];
     params.Rp2 = R[i] * R[i]; //Optimization
-    
-    gsl_integration_qag(&F, 0, M_PI, ABSERR, RELERR, workspace_size,
+
+    rc = gsl_integration_qag(&F, 0, M_PI, ABSERR, RELERR, workspace_size,
 			KEY, workspace, &result, &err);
     Sigma_mis[i] = result/(M_PI*Rmis*Rmis); //Normalization
   }
   //Static objects aren't freed
   free(lnRs);
-  return 0;
+  return rc;
 }
 
 ///////////////////////////////////////////////////
@@ -384,13 +396,15 @@ int DeltaSigma_mis_at_R_arr(double*R, int NR, double*Rs, double*Sigma_mis, int N
   static gsl_integration_workspace*workspace = NULL;
   static integrand_params params;
   if (init_flag == 0){
-    init_flag = 1;
     spline = gsl_spline_alloc(gsl_interp_cspline, Ns);
     acc = gsl_interp_accel_alloc();
     workspace = gsl_integration_workspace_alloc(workspace_size);
+    if (!spline || !acc || !workspace)
+      return GSL_ENOMEM;
+    init_flag = 1;
   }
 
-  gsl_spline_init(spline, Rs, Sigma_mis, Ns);
+  int rc = gsl_spline_init(spline, Rs, Sigma_mis, Ns);
   
   params.spline = spline;
   params.acc = acc;
@@ -398,11 +412,13 @@ int DeltaSigma_mis_at_R_arr(double*R, int NR, double*Rs, double*Sigma_mis, int N
   F.function = &DS_mis_integrand;
 
   for(i = 0; i < NR; i++){
-    gsl_integration_qag(&F, lrmin, log(R[i]), ABSERR, RELERR, workspace_size,
+    if (rc != GSL_SUCCESS)
+      break;
+    rc = gsl_integration_qag(&F, lrmin, log(R[i]), ABSERR, RELERR, workspace_size,
 			KEY, workspace, &result, &err);
     DeltaSigma_mis[i] = (low_part+result)*2/(R[i]*R[i]) - gsl_spline_eval(spline, R[i], acc);
   }
 
   //No free() since we use static variables.
-  return 0;
+  return rc; 
 }

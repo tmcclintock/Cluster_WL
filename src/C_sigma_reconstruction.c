@@ -23,7 +23,7 @@
  * the input DeltaSigma, also we assume a regular grid
  * spacing in the ln(R).
  */
-int Sigma_REC_from_DeltaSigma(double dlnR, double*DeltaSigma, int N,
+void Sigma_REC_from_DeltaSigma(double dlnR, double*DeltaSigma, int N,
 			      double*Sigma){
   /*
     The transformation is:
@@ -46,10 +46,9 @@ int Sigma_REC_from_DeltaSigma(double dlnR, double*DeltaSigma, int N,
       //Downweight the first and last contributions (midpoint formula)
       //if ((j == N-2-i) || (j == N-1)){
       if ((j == i) || (j == N-1)){
-	Sigma[i] += dlnR*DeltaSigma[j];
+        Sigma[i] += dlnR*DeltaSigma[j];
       }
       //printf("%e\n",Sigma[i]);
     }
   }
-  return 0;
 }

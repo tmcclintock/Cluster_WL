@@ -1,7 +1,7 @@
 """Correlation functions with halo exclusion.
 """
 import cluster_toolkit
-from cluster_toolkit import _dcast as dc
+from cluster_toolkit import _ArrayWrapper, _handle_gsl_error
 import numpy as np
 
 def xi_hm_exclusion_at_r(radii, Mass, conc, alpha,
@@ -102,7 +102,7 @@ def xi_2h_exclusion_at_r(radii, r_eff, beta_eff, bias, xi_mm):
         r_eff (float): effective radius for 2-halo subtraction in Mpc/h
         beta_eff (float): width for effective radius truncation
         bias (float): halo bias at large scales
-        xi_mm (float or array-like): matter correlation function. 
+        xi_mm (float or array-like): matter correlation function.
             Must have same shape as the radii.
 
     Returns:
@@ -165,7 +165,7 @@ def xi_C_at_r(radii, r_A, r_B, beta_ex, xi_2h):
 
 def theta_at_r(radii, rt, beta):
     """Truncation function.
-    
+
     Args:
         radii (float or array-like): Radii of the profile in Mpc/h
         rt (float): truncation radius in Mpc/h
@@ -184,8 +184,9 @@ def theta_at_r(radii, rt, beta):
         raise Exception("radii cannot be a >1D array.")
 
     theta = np.zeros_like(radii)
-    cluster_toolkit._lib.theta_erfc_at_r_arr(dc(radii), len(radii),
-                                             rt, beta, dc(theta))
+    rc = cluster_toolkit._lib.theta_erfc_at_r_arr(dc(radii), len(radii),
+                                                  rt, beta, dc(theta))
+    _handle_gsl_error(rc)
     if scalar_input:
         return np.squeeze(theta)
     return theta

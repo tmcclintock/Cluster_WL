@@ -35,17 +35,16 @@
  *  @Omega_m Matter fraction.
  *  @return NFW halo density.
  */
-int calc_rho_nfw(double*r, int Nr, double Mass, double conc, int delta, double Omega_m, double*rho_nfw){
+void calc_rho_nfw(double*r, int Nr, double Mass, double conc, int delta, double Omega_m, double*rho_nfw){
   int i;
   double rhom = Omega_m*rhomconst;//Msun h^2/Mpc^3
   calc_xi_nfw(r, Nr, Mass, conc, delta, Omega_m, rho_nfw); //rho_nfw actually holds xi_nfw here
   for(i = 0; i < Nr; i++){
     rho_nfw[i] = rhom*(1+rho_nfw[i]);
   }
-  return 0;
 }
 
-int calc_rho_einasto(double*R, int NR, double Mass, double rhos, double conc, double alpha, int delta, double Omega_m, double*rho_einasto){
+void calc_rho_einasto(double*R, int NR, double Mass, double rhos, double conc, double alpha, int delta, double Omega_m, double*rho_einasto){
   double rhom = rhomconst*Omega_m; //SM h^2/Mpc^3
   double Rdelta = pow(Mass/(1.33333333333*M_PI*rhom*delta), 0.33333333333);
   double rs = Rdelta / conc; //compute scale radius from concentration
@@ -57,6 +56,4 @@ int calc_rho_einasto(double*R, int NR, double Mass, double rhos, double conc, do
     x = 2./alpha * pow(R[i]/rs, alpha);
     rho_einasto[i] = rhos * exp(-x);
   }
-  
-  return 0;
 }

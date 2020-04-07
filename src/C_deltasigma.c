@@ -48,7 +48,7 @@ double Sigma_nfw_at_R(double R, double M, double c, int delta, double om){
  *
  * Note: all distances are comoving.
  */
-int Sigma_nfw_at_R_arr(double*R, int NR, double M, double c, int delta, double om, double*Sigma){
+void Sigma_nfw_at_R_arr(double*R, int NR, double M, double c, int delta, double om, double*Sigma){
   double rhom = om*rhocrit;//SM h^2/Mpc^3
   double deltac = delta*0.3333333333*c*c*c/(log(1.+c)-c/(1.+c));
   double Rdelta = pow(M/(1.333333333*M_PI*rhom*delta),0.333333333);//Mpc/h
@@ -65,7 +65,6 @@ int Sigma_nfw_at_R_arr(double*R, int NR, double M, double c, int delta, double o
     }
     Sigma[i] = 2*Rscale*deltac*rhom*gx*1.e-12; //SM h/pc^2
   }
-  return 0;
 }
 
 typedef struct integrand_params{
@@ -135,7 +134,6 @@ double integrand_large_scales(double lRz, void*params){
  * Note: all distances are comoving.
  */
 int Sigma_at_R_arr(double*R, int NR, double*Rxi, double*xi, int Nxi, double M, double conc, int delta, double om, double*Sigma){
-  gsl_set_error_handler_off();
   double rhom = om*rhocrit*1e-12; //SM h^2/pc^2/Mpc; integral is over Mpc/h
   double Rxi0 = Rxi[0];
   double Rxi_max = Rxi[Nxi-1];
@@ -146,15 +144,22 @@ int Sigma_at_R_arr(double*R, int NR, double*Rxi, double*xi, int Nxi, double M, d
 
   gsl_interp_accel*acc= gsl_interp_accel_alloc();
   gsl_integration_workspace*workspace = gsl_integration_workspace_alloc(workspace_size);
+
+  // If allocation fails
+  if (!spline || !acc || !workspace)
+    return GSL_ENOMEM;
+
   integrand_params params;
   gsl_function F;
   double result1, err1, result2, err2;
-  int i;
+  int i, rc = GSL_SUCCESS;
   double*lnRxi = (double*)malloc(Nxi*sizeof(double));
   for(i = 0; i < Nxi; i++){
     lnRxi[i] = log(Rxi[i]);
   }
-  gsl_spline_init(spline, lnRxi, xi, Nxi);
+
+  rc = gsl_spline_init(spline, lnRxi, xi, Nxi);
+
   params.acc = acc;
   params.spline = spline;
   params.M = M;
@@ -162,32 +167,32 @@ int Sigma_at_R_arr(double*R, int NR, double*Rxi, double*xi, int Nxi, double M, d
   params.delta = delta;
   params.om = om;
   F.params = &params;
-  int status;
   for(i = 0; i < NR; i++){
     ln_z_max = log(sqrt(Rxi_max*Rxi_max - R[i]*R[i])); //Max distance to integrate to
     params.Rp = R[i];
     if(R[i] < Rxi0){
       F.function = &integrand_small_scales;
-      status = gsl_integration_qag(&F, log(Rxi0)-10, log(sqrt(Rxi0*Rxi0-R[i]*R[i])), ABSERR, RELERR, workspace_size, KEY, workspace, &result1, &err1);
-      if (status)
-	fprintf(stderr, "Error in C_deltasigma.c in small scales with\n\t%e\n\t%e\n",M,conc);
+      rc = gsl_integration_qag(&F, log(Rxi0)-10, log(sqrt(Rxi0*Rxi0-R[i]*R[i])), ABSERR, RELERR, workspace_size, KEY, workspace, &result1, &err1);
+      if (rc != GSL_SUCCESS)
+        break;
       F.function = &integrand_medium_scales;
-      status = gsl_integration_qag(&F, log(sqrt(Rxi0*Rxi0-R[i]*R[i])), ln_z_max, ABSERR, RELERR, workspace_size, KEY, workspace, &result2, &err2);
-      if (status)
-	fprintf(stderr, "Error in C_deltasigma.c in medium scales with\n\t%e\n\t%e\n",M,conc);
-
+      rc = gsl_integration_qag(&F, log(sqrt(Rxi0*Rxi0-R[i]*R[i])), ln_z_max, ABSERR, RELERR, workspace_size, KEY, workspace, &result2, &err2);
     }else{ //R[i] > Rxi0
       result1 = 0;
       F.function = &integrand_medium_scales;
-      gsl_integration_qag(&F, -10, ln_z_max, ABSERR, RELERR, workspace_size, KEY, workspace, &result2, &err2);
+      rc = gsl_integration_qag(&F, -10, ln_z_max, ABSERR, RELERR, workspace_size, KEY, workspace, &result2, &err2);
     }
     Sigma[i] = (result1+result2)*rhom*2;
+    if (rc != GSL_SUCCESS)
+      break;
   }
+
   gsl_spline_free(spline);
   gsl_interp_accel_free(acc);
   gsl_integration_workspace_free(workspace);
   free(lnRxi);
-  return 0;
+
+  return rc;
 }
 
 /**
@@ -205,10 +210,15 @@ int Sigma_at_R_full_arr(double*R, int NR, double*Rxi, double*xi, int Nxi, double
   double Rxi_max = Rxi[Nxi-1];
   double ln_z_max;
   double result3, err3;
+
   gsl_integration_workspace*workspace = gsl_integration_workspace_alloc(workspace_size);
+  // Handle allocation failure
+  if (!workspace)
+      return GSL_ENOMEM;
+
   integrand_params params;
   gsl_function F;
-  int i;
+  int i, rc = GSL_SUCCESS;
   Sigma_at_R_arr(R, NR, Rxi, xi, Nxi, M, conc, delta, om, Sigma);
   params.slope = log(xi[Nxi-1]/xi[Nxi-2])/log(Rxi[Nxi-1]/Rxi[Nxi-2]);
   params.intercept = xi[Nxi-1]/pow(Rxi[Nxi-1], params.slope);
@@ -217,11 +227,14 @@ int Sigma_at_R_full_arr(double*R, int NR, double*Rxi, double*xi, int Nxi, double
   for(i = 0; i < NR; i++){
     ln_z_max = log(sqrt(Rxi_max*Rxi_max - R[i]*R[i]));
     params.Rp = R[i];
-    gsl_integration_qag(&F, ln_z_max, ln_z_max+ulim, ABSERR, RELERR, workspace_size, KEY, workspace, &result3, &err3);
+    rc = gsl_integration_qag(&F, ln_z_max, ln_z_max+ulim, ABSERR, RELERR, workspace_size, KEY, workspace, &result3, &err3);
     Sigma[i] += (result3*rhom*2);
+    if (rc != GSL_SUCCESS)
+      break;
   }
+
   gsl_integration_workspace_free(workspace);
-  return 0;
+  return rc;
 }
 
 ////////////// DELTASIGMA FUNCTIONS BELOW////////////////
@@ -247,15 +260,22 @@ int DeltaSigma_at_R_arr(double*R, int NR, double*Rs, double*Sigma, int Ns, doubl
   gsl_spline*spline = gsl_spline_alloc(gsl_interp_cspline, Ns);
   gsl_interp_accel*acc = gsl_interp_accel_alloc();
   gsl_integration_workspace* workspace = gsl_integration_workspace_alloc(workspace_size);
+
+  // Handle allocation failures
+  if (!spline || !acc || !workspace)
+    return GSL_ENOMEM;
+
   integrand_params params;
   double result1, result2, err1, err2;
   gsl_function F;
-  int i;
+  int i, rc = GSL_SUCCESS;
   double*lnRs = (double*)malloc(Ns*sizeof(double));
+
   for(i = 0; i < Ns; i++){
     lnRs[i] = log(Rs[i]);
   }
-  gsl_spline_init(spline, lnRs, Sigma, Ns);
+
+  rc = gsl_spline_init(spline, lnRs, Sigma, Ns);
   params.spline = spline;
   params.acc = acc;
   params.M = M;
@@ -264,15 +284,28 @@ int DeltaSigma_at_R_arr(double*R, int NR, double*Rs, double*Sigma, int Ns, doubl
   params.om = om;
   F.params = &params;
   F.function = &DS_integrand_small_scales;
-  gsl_integration_qag(&F, lrmin-10, lrmin, ABSERR, RELERR, workspace_size, KEY, workspace, &result1, &err1);
-  F.function = &DS_integrand_medium_scales;
-  for(i = 0; i < NR; i++){
-    gsl_integration_qag(&F, lrmin, log(R[i]), ABSERR, RELERR, workspace_size, KEY, workspace, &result2, &err2);
-    DeltaSigma[i] = (result1+result2)*2/(R[i]*R[i]) - gsl_spline_eval(spline, log(R[i]), acc);
+  if (rc == GSL_SUCCESS) {
+    rc = gsl_integration_qag(&F, lrmin-10, lrmin, ABSERR, RELERR, workspace_size, KEY, workspace, &result1, &err1);
+    F.function = &DS_integrand_medium_scales;
+    if (rc == GSL_SUCCESS) {
+      for(i = 0; i < NR; i++){
+        rc = gsl_integration_qag(&F, lrmin, log(R[i]), ABSERR, RELERR, workspace_size, KEY, workspace, &result2, &err2);
+        if (rc != GSL_SUCCESS)
+          break;
+
+        double spline_eval = 0.0;
+        rc = gsl_spline_eval_e(spline, log(R[i]), acc, &spline_eval);
+        if (rc != GSL_SUCCESS)
+          break;
+        DeltaSigma[i] = (result1+result2)*2/(R[i]*R[i]) - spline_eval;
+      }
+    }
   }
+
   gsl_spline_free(spline);
   gsl_interp_accel_free(acc);
   gsl_integration_workspace_free(workspace);
   free(lnRs);
-  return 0;
+
+  return rc;
 }

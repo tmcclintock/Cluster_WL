@@ -19,7 +19,7 @@
  *
  * Used in McClintock et al. (2018).
  */
-int boost_nfw_at_R_arr(double*R, int NR, double B0, double Rs,
+void boost_nfw_at_R_arr(double*R, int NR, double B0, double Rs,
 		       double*boost){
   int i;
   double x2m1;
@@ -36,8 +36,6 @@ int boost_nfw_at_R_arr(double*R, int NR, double B0, double Rs,
       boost[i] = 1;
     }
   }
-
-  return 0;
 }
 
 /**
@@ -45,11 +43,10 @@ int boost_nfw_at_R_arr(double*R, int NR, double B0, double Rs,
  *
  * Used in Melchior et al. (2017).
  */
-int boost_powerlaw_at_R_arr(double*R, int NR, double B0, double Rs,
+void boost_powerlaw_at_R_arr(double*R, int NR, double B0, double Rs,
 			    double alpha, double*boost){
   int i;
   for(i = 0; i < NR; i++){
     boost[i] = 1+B0*pow(R[i]/Rs,alpha);
   }
-  return 0;
 }

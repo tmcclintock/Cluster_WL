@@ -2,7 +2,7 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _dcast
+from cluster_toolkit import _ArrayWrapper
 import numpy as np
 
 def boost_nfw_at_R(R, B0, R_scale):
@@ -17,20 +17,12 @@ def boost_nfw_at_R(R, B0, R_scale):
         float or array like: NFW boost factor profile; B = (1-fcl)^-1.
 
     """
-    R = np.asarray(R)
-    scalar_input = False
-    if R.ndim == 0:
-        R = R[None] #makes R 1D
-        scalar_input = True
-    if R.ndim > 1:
-        raise Exception("R cannot be a >1D array.")
+    R = _ArrayWrapper(R, 'R')
 
-    boost = np.zeros_like(R)
-    cluster_toolkit._lib.boost_nfw_at_R_arr(_dcast(R), len(R), B0, R_scale,
-                                            _dcast(boost))
-    if scalar_input:
-        return np.squeeze(boost)
-    return boost
+    boost = _ArrayWrapper.zeros_like(R)
+    cluster_toolkit._lib.boost_nfw_at_R_arr(R.cast(), len(R), B0, R_scale,
+                                            boost.cast())
+    return boost.finish()
 
 def boost_powerlaw_at_R(R, B0, R_scale, alpha):
     """Power law boost factor model.
@@ -45,17 +37,9 @@ def boost_powerlaw_at_R(R, B0, R_scale, alpha):
         float or array like: Power law boost factor profile; B = (1-fcl)^-1.
 
     """
-    R = np.asarray(R)
-    scalar_input = False
-    if R.ndim == 0:
-        R = R[None] #makes R 1D
-        scalar_input = True
-    if R.ndim > 1:
-        raise Exception("R cannot be a >1D array.")
+    R = _ArrayWrapper(R, 'R')
 
-    boost = np.zeros_like(R)
-    cluster_toolkit._lib.boost_powerlaw_at_R_arr(_dcast(R), len(R), B0,
-                                                 R_scale, alpha, _dcast(boost))
-    if scalar_input:
-        return np.squeeze(boost)
-    return boost
+    boost = _ArrayWrapper.zeros_like(R)
+    cluster_toolkit._lib.boost_powerlaw_at_R_arr(R.cast(), len(R), B0,
+                                                 R_scale, alpha, boost.cast())
+    return boost.finish()

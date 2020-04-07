@@ -2,9 +2,9 @@
 Derivatives of halo profiles. Used to plot splashback results.
 """
 import cluster_toolkit as ct
-from cluster_toolkit import _dcast
+from cluster_toolkit import _ArrayWrapper
 import numpy as np
-from numpy import ascontiguousarray as ACA
+
 
 def drho_nfw_dr_at_R(Radii, Mass, conc, Omega_m, delta=200):
     """Derivative of the NFW halo density profile.
@@ -20,12 +20,11 @@ def drho_nfw_dr_at_R(Radii, Mass, conc, Omega_m, delta=200):
         float or array like: derivative of the NFW profile.
 
     """
-    if type(Radii) is list or type(Radii) is np.ndarray:
-        drhodr = np.zeros_like(Radii)
-        ct._lib.drho_nfw_dr_at_R_arr(_dcast(R), len(R), Mass, conc,
-                                     delta, Omega_m, _dcast(drhodr))
-        return xi
+    Radii = _ArrayWrapper(Radii, allow_multidim=True)
+    if isinstance(Radii, list) or isinstance(Radii, np.ndarray):
+        drhodr = _ArrayWrapper.zeros_like(Radii)
+        ct._lib.drho_nfw_dr_at_R_arr(Radii.cast(), len(Radii), Mass, conc,
+                                     delta, Omega_m, drhodr.cast())
+        return drhodr.finish()
     else:
-        return cluster_toolkit._lib.drho_nfw_dr_at_R(Radii, Mass, conc,
-                                                     delta, Omega_m)
-
+        return ct._lib.drho_nfw_dr_at_R(Radii, Mass, conc, delta, Omega_m)

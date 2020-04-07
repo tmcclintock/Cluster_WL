@@ -2,7 +2,7 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _dcast
+from cluster_toolkit import _ArrayWrapper, _handle_gsl_error
 import numpy as np
 
 def Sigma_nfw_at_R(R, mass, concentration, Omega_m, delta=200):
@@ -19,21 +19,13 @@ def Sigma_nfw_at_R(R, mass, concentration, Omega_m, delta=200):
         float or array like: Surface mass density Msun h/pc^2 comoving.
 
     """
-    R = np.asarray(R)
-    scalar_input = False
-    if R.ndim == 0:
-        R = R[None] #makes R 1D
-        scalar_input = True
-    if R.ndim > 1:
-        raise Exception("R cannot be a >1D array.")
+    R = _ArrayWrapper(R, 'R')
 
-    Sigma = np.zeros_like(R)
-    cluster_toolkit._lib.Sigma_nfw_at_R_arr(_dcast(R), len(R), mass,
+    Sigma = _ArrayWrapper.zeros_like(R)
+    cluster_toolkit._lib.Sigma_nfw_at_R_arr(R.cast(), len(R), mass,
                                             concentration, delta,
-                                            Omega_m, _dcast(Sigma))
-    if scalar_input:
-        return np.squeeze(Sigma)
-    return Sigma
+                                            Omega_m, Sigma.cast())
+    return Sigma.finish()
 
 def Sigma_at_R(R, Rxi, xi, mass, concentration, Omega_m, delta=200):
     """Surface mass density given some 3d profile [Msun h/pc^2 comoving].
@@ -51,25 +43,23 @@ def Sigma_at_R(R, Rxi, xi, mass, concentration, Omega_m, delta=200):
         float or array like: Surface mass density Msun h/pc^2 comoving.
 
     """
-    R = np.asarray(R)
-    scalar_input = False
-    if R.ndim == 0:
-        R = R[None] #makes R 1D
-        scalar_input = True
-    if R.ndim > 1:
-        raise Exception("R cannot be a >1D array.")
-    if np.min(R) < np.min(Rxi):
+    R = _ArrayWrapper(R, 'R')
+    Rxi = _ArrayWrapper(Rxi, allow_multidim=True)
+    xi = _ArrayWrapper(xi, allow_multidim=True)
+
+    if np.min(R.arr) < np.min(Rxi.arr):
         raise Exception("Minimum R for Sigma(R) must be >= than min(r) of xi(r).")
-    if np.max(R) > np.max(Rxi):
+    if np.max(R.arr) > np.max(Rxi.arr):
         raise Exception("Maximum R for Sigma(R) must be <= than max(r) of xi(r).")
 
-    Sigma = np.zeros_like(R)
-    cluster_toolkit._lib.Sigma_at_R_full_arr(_dcast(R), len(R), _dcast(Rxi),
-                                             _dcast(xi), len(Rxi), mass, concentration,
-                                             delta, Omega_m, _dcast(Sigma))
-    if scalar_input:
-        return np.squeeze(Sigma)
-    return Sigma
+    Sigma = _ArrayWrapper.zeros_like(R)
+    rc = cluster_toolkit._lib.Sigma_at_R_full_arr(R.cast(), len(R), Rxi.cast(),
+                                                  xi.cast(), len(Rxi), mass, concentration,
+                                                  delta, Omega_m, Sigma.cast())
+
+    _handle_gsl_error(rc, Sigma_at_R)
+
+    return Sigma.finish()
 
 def DeltaSigma_at_R(R, Rs, Sigma, mass, concentration, Omega_m, delta=200):
     """Excess surface mass density given Sigma [Msun h/pc^2 comoving].
@@ -87,26 +77,23 @@ def DeltaSigma_at_R(R, Rs, Sigma, mass, concentration, Omega_m, delta=200):
         float or array like: Excess surface mass density Msun h/pc^2 comoving.
 
     """
-    R = np.asarray(R)
-    scalar_input = False
-    if R.ndim == 0:
-        R = R[None] #makes R 1D
-        scalar_input = True
-    if R.ndim > 1:
-        raise Exception("R cannot be a >1D array.")
+    R = _ArrayWrapper(R, 'R')
+    Rs = _ArrayWrapper(Rs, allow_multidim=True)
+    Sigma = _ArrayWrapper(Sigma, allow_multidim=True)
 
-    if np.min(R) < np.min(Rs):
+    if np.min(R.arr) < np.min(Rs.arr):
         raise Exception("Minimum R for DeltaSigma(R) must be "+
                         ">= than min(R) of Sigma(R).")
-    if np.max(R) > np.max(Rs):
+    if np.max(R.arr) > np.max(Rs.arr):
         raise Exception("Maximum R for DeltaSigma(R) must be "+
                         "<= than max(R) of Sigma(R).")
 
-    DeltaSigma = np.zeros_like(R)
-    cluster_toolkit._lib.DeltaSigma_at_R_arr(_dcast(R), len(R), _dcast(Rs),
-                                             _dcast(Sigma), len(Rs), mass,
-                                             concentration, delta, Omega_m,
-                                             _dcast(DeltaSigma))
-    if scalar_input:
-        return np.squeeze(DeltaSigma)
-    return DeltaSigma
+    DeltaSigma = _ArrayWrapper.zeros_like(R)
+    rc = cluster_toolkit._lib.DeltaSigma_at_R_arr(R.cast(), len(R), Rs.cast(),
+                                                  Sigma.cast(), len(Rs), mass,
+                                                  concentration, delta, Omega_m,
+                                                  DeltaSigma.cast())
+
+    _handle_gsl_error(rc, DeltaSigma_at_R)
+
+    return DeltaSigma.finish()

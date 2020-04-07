@@ -2,11 +2,11 @@
 
 """
 import cluster_toolkit
-from cluster_toolkit import _dcast
+from cluster_toolkit import _ArrayWrapper
 import numpy as np
 
 def Sigma_mis_single_at_R(R, Rsigma, Sigma, M, conc, Omega_m, Rmis, delta=200):
-    """Miscentered surface mass density [Msun h/pc^2 comoving] of a profile miscentered by an 
+    """Miscentered surface mass density [Msun h/pc^2 comoving] of a profile miscentered by an
     amount Rmis Mpc/h comoving. Units are Msun h/pc^2 comoving.
 
     Args:
@@ -23,26 +23,29 @@ def Sigma_mis_single_at_R(R, Rsigma, Sigma, M, conc, Omega_m, Rmis, delta=200):
         float or array like: Miscentered projected surface mass density.
 
     """
-    R = np.asarray(R)
-    scalar_input = False
-    if R.ndim == 0:
-        R = R[None] #makes R 1D
-        scalar_input = True
-    if R.ndim > 1:
-        raise Exception("R cannot be a >1D array.")
-    if np.min(R) < np.min(Rsigma):
+    R = _ArrayWrapper(R, 'R')
+
+    if np.min(R.arr) < np.min(Rsigma):
         raise Exception("Minimum R must be >= min(R_Sigma)")
-    if np.max(R) > np.max(Rsigma):
+    if np.max(R.arr) > np.max(Rsigma):
         raise Exception("Maximum R must be <= max(R_Sigma)")
-    Sigma_mis = np.zeros_like(R)
-    cluster_toolkit._lib.Sigma_mis_single_at_R_arr(_dcast(R), len(R), _dcast(Rsigma), _dcast(Sigma),
-                                                   len(Rsigma), M, conc, delta, Omega_m, Rmis, _dcast(Sigma_mis))
-    if scalar_input:
-        return np.squeeze(Sigma_mis)
-    return Sigma_mis
+
+    Rsigma = _ArrayWrapper(Rsigma, allow_multidim=True)
+    Sigma = _ArrayWrapper(Sigma, allow_multidim=True)
+
+    if Rsigma.shape != Sigma.shape:
+        raise ValueError('Rsigma and Sigma must have the same shape')
+
+    Sigma_mis = _ArrayWrapper.zeros_like(R)
+    cluster_toolkit._lib.Sigma_mis_single_at_R_arr(R.cast(), len(R),
+                                                   Rsigma.cast(), Sigma.cast(),
+                                                   len(Rsigma), M, conc, delta,
+                                                   Omega_m, Rmis,
+                                                   Sigma_mis.cast())
+    return Sigma_mis.finish()
 
 def Sigma_mis_at_R(R, Rsigma, Sigma, M, conc, Omega_m, Rmis, delta=200, kernel="rayleigh"):
-    """Miscentered surface mass density [Msun h/pc^2 comoving] 
+    """Miscentered surface mass density [Msun h/pc^2 comoving]
     convolved with a distribution for Rmis. Units are Msun h/pc^2 comoving.
 
     Args:
@@ -60,18 +63,12 @@ def Sigma_mis_at_R(R, Rsigma, Sigma, M, conc, Omega_m, Rmis, delta=200, kernel="
         float or array like: Miscentered projected surface mass density.
 
     """
-    R = np.asarray(R)
-    scalar_input = False
-    if R.ndim == 0:
-        R = R[None] #makes R 1D
-        scalar_input = True
+    R = _ArrayWrapper(R, 'R')
 
-    #Exception checking
-    if R.ndim > 1:
-        raise Exception("R cannot be a >1D array.")
-    if np.min(R) < np.min(Rsigma):
+    # Exception checking
+    if np.min(R.arr) < np.min(Rsigma):
         raise Exception("Minimum R must be >= min(R_Sigma)")
-    if np.max(R) > np.max(Rsigma):
+    if np.max(R.arr) > np.max(Rsigma):
         raise Exception("Maximum R must be <= max(R_Sigma)")
     if kernel == "rayleigh":
         integrand_switch = 0
@@ -81,12 +78,18 @@ def Sigma_mis_at_R(R, Rsigma, Sigma, M, conc, Omega_m, Rmis, delta=200, kernel="
         raise Exception("Miscentering kernel must be either "+
                         "'rayleigh' or 'gamma'")
 
-    Sigma_mis = np.zeros_like(R)
-    cluster_toolkit._lib.Sigma_mis_at_R_arr(_dcast(R), len(R), _dcast(Rsigma), _dcast(Sigma), len(Rsigma),
-                                            M, conc, delta, Omega_m, Rmis, integrand_switch, _dcast(Sigma_mis))
-    if scalar_input:
-        return np.squeeze(Sigma_mis)
-    return Sigma_mis
+    Rsigma = _ArrayWrapper(Rsigma, allow_multidim=True)
+    Sigma = _ArrayWrapper(Sigma, allow_multidim=True)
+
+    if Rsigma.shape != Sigma.shape:
+        raise ValueError('Rsigma and Sigma must have the same shape')
+
+    Sigma_mis = _ArrayWrapper.zeros_like(R)
+    cluster_toolkit._lib.Sigma_mis_at_R_arr(R.cast(), len(R), Rsigma.cast(),
+                                            Sigma.cast(), len(Rsigma),
+                                            M, conc, delta, Omega_m, Rmis,
+                                            integrand_switch, Sigma_mis.cast())
+    return Sigma_mis.finish()
 
 def DeltaSigma_mis_at_R(R, Rsigma, Sigma_mis):
     """Miscentered excess surface mass density profile at R. Units are Msun h/pc^2 comoving.
@@ -100,21 +103,22 @@ def DeltaSigma_mis_at_R(R, Rsigma, Sigma_mis):
         float array like: Miscentered excess surface mass density profile.
 
     """
-    R = np.asarray(R)
-    scalar_input = False
-    if R.ndim == 0:
-        R = R[None] #makes R 1D
-        scalar_input = True
-    if R.ndim > 1:
-        raise Exception("R cannot be a >1D array.")
-    if np.min(R) < np.min(Rsigma):
+    R = _ArrayWrapper(R, 'R')
+    if np.min(R.arr) < np.min(Rsigma):
         raise Exception("Minimum R must be >= min(R_Sigma)")
-    if np.max(R) > np.max(Rsigma):
+    if np.max(R.arr) > np.max(Rsigma):
         raise Exception("Maximum R must be <= max(R_Sigma)")
-    
-    DeltaSigma_mis = np.zeros_like(R)
-    cluster_toolkit._lib.DeltaSigma_mis_at_R_arr(_dcast(R), len(R), _dcast(Rsigma), _dcast(Sigma_mis),
-                                                 len(Rsigma), _dcast(DeltaSigma_mis))
-    if scalar_input:
-        return np.squeeze(DeltaSigma_mis)
-    return DeltaSigma_mis
+
+    Rsigma = _ArrayWrapper(Rsigma, allow_multidim=True)
+    Sigma_mis = _ArrayWrapper(Sigma_mis, allow_multidim=True)
+
+    if Rsigma.shape != Sigma_mis.shape:
+        raise ValueError('Rsigma and Sigma must have the same shape')
+
+    DeltaSigma_mis = _ArrayWrapper.zeros_like(R)
+    cluster_toolkit._lib.DeltaSigma_mis_at_R_arr(R.cast(), len(R),
+                                                 Rsigma.cast(),
+                                                 Sigma_mis.cast(),
+                                                 len(Rsigma),
+                                                 DeltaSigma_mis.cast())
+    return DeltaSigma_mis.finish()

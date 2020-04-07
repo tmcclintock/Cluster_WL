@@ -44,7 +44,6 @@ def test_derivatives():
     deriv = db/dM
     pd = dbdM[:-1] / deriv
     npt.assert_array_almost_equal(pd, np.ones_like(pd), 1e-2)
-    return
 
 def test_s2_and_nu_functions():
     #Test the mass calls
