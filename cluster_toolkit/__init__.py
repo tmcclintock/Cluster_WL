@@ -29,9 +29,12 @@ _ffi = cffi.FFI()
 for file_name in glob.glob(os.path.join(include_dir,'*.h')):
     _ffi.cdef(open(file_name).read())
 _lib = _ffi.dlopen(lib_file)
+_lib.gsl_set_error_handler_off()
 
 def _dcast(x):
     if isinstance(x, list): x = np.asarray(x, dtype=np.float64, order='C')
     return _ffi.cast('double*', x.ctypes.data)
 
-from . import averaging, bias, boostfactors, concentration, deltasigma, density, exclusion, massfunction, miscentering, peak_height, profile_derivatives, sigma_reconstruction, xi
+from . import (averaging, bias, boostfactors, concentration, deltasigma,
+               density, exclusion, massfunction, miscentering, peak_height,
+               pressure, profile_derivatives, sigma_reconstruction, xi)

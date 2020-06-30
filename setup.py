@@ -9,6 +9,8 @@ sources = glob.glob(os.path.join('src','*.c'))
 headers = glob.glob(os.path.join('include','*.h'))
 try:
     cflags = subprocess.check_output(['gsl-config', '--cflags'], universal_newlines=True).split()
+    # TODO make this robust to compiler
+    cflags.append('-std=gnu99')
     lflags = subprocess.check_output(['gsl-config', '--libs'], universal_newlines=True).split()
 except OSError:
     raise Exception("Error: must have GSL installed and gsl-config working")
@@ -29,14 +31,14 @@ dist = setup(name="cluster_toolkit",
              packages=['cluster_toolkit'],
              package_data={'cluster_toolkit' : headers },
              ext_modules=[ext],
-             install_requires=['cffi','numpy'],
+             install_requires=['astropy', 'cffi', 'numpy'],
              setup_requires=['pytest_runner'],
              tests_require=['pytest']
 )
 
-#setup.py doesn't put the .so file in the cluster_toolkit directory, 
+#setup.py doesn't put the .so file in the cluster_toolkit directory,
 #so this bit makes it possible to
-#import cluster_toolkit from the root directory.  
+#import cluster_toolkit from the root directory.
 #Not really advisable, but everyone does it at some
 #point, so might as well facilitate it.
 build_lib = glob.glob(os.path.join('build','*','cluster_toolkit','_cluster_toolkit*.so'))
